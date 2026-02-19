@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>番茄专注</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/timer.css">
+  <link rel="stylesheet" href="styles/settings.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Timer Page -->
+    <div id="timer-page" class="page active">
+      <div id="timer-bg" class="timer-bg" style="display:none;"></div>
+      <div id="timer-bg-overlay" class="timer-bg-overlay" style="display:none;"></div>
+      <div class="timer-container">
+        <!-- 时间标签 -->
+        <div class="time-labels" id="time-labels">
+          <span class="time-label">小时</span>
+          <span class="time-label-spacer"></span>
+          <span class="time-label">分钟</span>
+          <span class="time-label-spacer"></span>
+          <span class="time-label">秒</span>
+        </div>
+
+        <!-- 大号时间显示 / 可编辑时间选择器 -->
+        <div class="timer-display" id="timer-display">
+          <span class="timer-digit" data-digit="0" id="digit-h0">0</span>
+          <span class="timer-digit" data-digit="1" id="digit-h1">0</span>
+          <span class="timer-separator">:</span>
+          <span class="timer-digit" data-digit="2" id="digit-m0">2</span>
+          <span class="timer-digit" data-digit="3" id="digit-m1">5</span>
+          <span class="timer-separator">:</span>
+          <span class="timer-digit" data-digit="4" id="digit-s0">0</span>
+          <span class="timer-digit" data-digit="5" id="digit-s1">0</span>
+        </div>
+
+        <!-- 当前状态文字 -->
+        <div class="timer-status" id="timer-status">未开始</div>
+
+        <!-- 控制按钮 -->
+        <div class="timer-controls">
+          <button id="btn-start" class="btn btn-primary btn-large">开始专注</button>
+          <button id="btn-skip-break" class="btn btn-secondary btn-large" style="display:none">跳过休息</button>
+        </div>
+
+        <!-- 应急取消按钮 -->
+        <div class="emergency-container">
+          <button id="btn-emergency" class="btn btn-danger" disabled>
+            🆘 紧急取消 (<span id="emergency-count">2</span>)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Page -->
+    <div id="settings-page" class="page">
+      <div class="settings-container">
+        <!-- 计时设置 -->
+        <div class="settings-card">
+          <h3 class="card-title">⏱️ 计时设置</h3>
+          <div class="card-content">
+            <div class="slider-group">
+              <label>
+                <span>工作时长</span>
+                <span class="slider-value"><span id="work-minutes-value">25</span> 分钟</span>
+              </label>
+              <input type="range" id="work-minutes" min="15" max="60" value="25" step="5">
+            </div>
+            <div class="slider-group">
+              <label>
+                <span>休息时长</span>
+                <span class="slider-value"><span id="break-minutes-value">5</span> 分钟</span>
+              </label>
+              <input type="range" id="break-minutes" min="3" max="15" value="5" step="1">
+            </div>
+            <div class="slider-group">
+              <label>
+                <span>紧急取消次数</span>
+                <span class="slider-value"><span id="emergency-limit-value">2</span> 次</span>
+              </label>
+              <input type="range" id="emergency-limit" min="0" max="5" value="2" step="1">
+            </div>
+            <div class="toggle-group">
+              <label>
+                <span>完成提醒音</span>
+                <label class="schedule-toggle">
+                  <input type="checkbox" id="sound-toggle" checked>
+                  <span class="schedule-toggle-slider"></span>
+                </label>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- App 黑名单 -->
+        <div class="settings-card">
+          <h3 class="card-title">🖼️ 背景图片</h3>
+          <div class="card-content">
+            <div id="bg-preview-container" class="bg-preview-container" style="display:none;">
+              <img id="bg-preview" class="bg-preview" alt="背景预览" />
+            </div>
+            <div class="bg-buttons">
+              <button id="btn-choose-bg" class="btn btn-secondary">选择图片</button>
+              <button id="btn-clear-bg" class="btn btn-danger" style="display:none;">恢复默认</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- App 黑名单 -->
+        <div class="settings-card">
+          <h3 class="card-title">🚫 App 黑名单</h3>
+          <div class="card-content">
+            <div id="blocked-apps-list" class="list-container">
+              <!-- App 列表将在这里渲染 -->
+            </div>
+            <div class="add-item-container">
+              <div class="app-input-wrapper">
+                <input type="text" id="new-app-input" placeholder="搜索已安装的 App..." autocomplete="off">
+                <div id="app-suggestions" class="app-suggestions" style="display: none;"></div>
+              </div>
+              <button id="btn-add-app" class="btn btn-secondary">添加</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 网站黑名单 -->
+        <div class="settings-card">
+          <h3 class="card-title">🌐 网站黑名单</h3>
+          <div class="card-content">
+            <div id="blocked-sites-list" class="list-container">
+              <!-- 网站列表将在这里渲染 -->
+            </div>
+            <div class="add-item-container">
+              <input type="text" id="new-site-input" placeholder="输入域名（如 youtube.com）">
+              <button id="btn-add-site" class="btn btn-secondary">添加</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 定时计划 -->
+        <div class="settings-card">
+          <h3 class="card-title">📅 定时计划</h3>
+          <div class="card-content">
+            <div id="schedules-list" class="list-container">
+              <!-- 时间段列表将在这里渲染 -->
+            </div>
+            <button id="btn-add-schedule" class="btn btn-secondary">添加时间段</button>
+          </div>
+        </div>
+
+        <!-- 模式切换 -->
+        <div class="settings-card">
+          <h3 class="card-title">🔄 工作模式</h3>
+          <div class="card-content">
+            <div class="mode-toggle-container">
+              <span class="mode-label">手动模式</span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="mode-toggle">
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="mode-label">定时模式</span>
+            </div>
+            <p class="mode-description" id="mode-description">
+              手动模式：需要手动点击"开始专注"按钮
+            </p>
+          </div>
+        </div>
+
+        <!-- 配置路径 -->
+        <div class="config-path">
+          配置文件：<code id="config-path"></code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-page="timer">
+        <span class="nav-icon">⏱️</span>
+        <span class="nav-label">计时器</span>
+      </button>
+      <button class="nav-btn" data-page="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">设置</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- 确认弹窗 -->
+  <div id="confirm-overlay" class="confirm-overlay" style="display: none;">
+    <div class="confirm-dialog">
+      <p id="confirm-message">确定要取消本次专注吗？</p>
+      <div class="confirm-buttons">
+        <button id="confirm-yes" class="btn btn-danger">确定取消</button>
+        <button id="confirm-no" class="btn btn-primary">继续专注</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

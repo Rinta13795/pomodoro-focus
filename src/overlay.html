@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>专注模式</title>
+  <style>
+    :root {
+      --bg-primary: #1a1a2e;
+      --bg-secondary: #16213e;
+      --bg-tertiary: #0f3460;
+      --text-primary: #eee;
+      --text-secondary: #888;
+      --accent: #e94560;
+      --accent-hover: #ff6b6b;
+      --danger: #dc3545;
+      --radius-sm: 8px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: rgba(26, 26, 46, 0.95);
+      color: var(--text-primary);
+      user-select: none;
+      overflow: hidden;
+    }
+
+    .overlay-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .overlay-card {
+      background: var(--bg-secondary);
+      border-radius: 20px;
+      padding: 3rem;
+      text-align: center;
+      max-width: 400px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .overlay-icon { font-size: 5rem; margin-bottom: 1rem; }
+
+    .overlay-title {
+      color: var(--text-primary);
+      font-size: 1.8rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    .overlay-subtitle {
+      color: var(--accent);
+      font-size: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .overlay-timer {
+      font-size: 4rem;
+      font-weight: 200;
+      color: var(--text-primary);
+      margin-bottom: 2rem;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    }
+
+    .overlay-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background-color: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background-color: var(--bg-secondary);
+    }
+
+    .btn-danger {
+      background-color: var(--danger);
+      color: white;
+    }
+    .btn-danger:hover:not(:disabled) {
+      background-color: #c82333;
+    }
+
+    /* 确认弹窗 */
+    .confirm-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .confirm-dialog {
+      background: var(--bg-secondary);
+      border-radius: 16px;
+      padding: 2rem;
+      text-align: center;
+      max-width: 360px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    }
+
+    .confirm-dialog p {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .confirm-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: white;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--accent-hover);
+    }
+
+    /* 取消成功过渡动画 */
+    .overlay-card.cancelled {
+      animation: fadeOutScale 0.5s ease forwards;
+    }
+    .cancelled-message {
+      font-size: 1.5rem;
+      color: #4caf50;
+      margin-top: 1rem;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .cancelled-message.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay-container">
+    <div class="overlay-card">
+      <div class="overlay-icon">🍅</div>
+      <h1 class="overlay-title">专注模式进行中</h1>
+      <p class="overlay-subtitle" id="blocked-app-name"></p>
+      <div class="overlay-timer">
+        <span id="overlay-minutes">25</span>:<span id="overlay-seconds">00</span>
+      </div>
+      <div class="overlay-buttons">
+        <button id="btn-back" class="btn btn-secondary">返回</button>
+        <button id="btn-emergency" class="btn btn-danger">
+          紧急取消（剩余 <span id="emergency-count">2</span> 次）
+        </button>
+      </div>
+      <div class="cancelled-message" id="cancelled-message">✅ 已取消专注</div>
+    </div>
+  </div>
+
+  <!-- 确认弹窗 -->
+  <div id="confirm-overlay" class="confirm-overlay" style="display: none;">
+    <div class="confirm-dialog">
+      <p id="confirm-message">确定要取消本次专注吗？</p>
+      <div class="confirm-buttons">
+        <button id="confirm-yes" class="btn btn-danger">确定取消</button>
+        <button id="confirm-no" class="btn btn-primary">继续专注</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 等待 Tauri API
+    async function waitForTauri() {
+      let attempts = 0;
+      while (attempts < 50) {
+        if (window.__TAURI__) return;
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+      }
+      throw new Error('Tauri API 加载超时');
+    }
+
+    async function init() {
+      await waitForTauri();
+
+      const invoke = window.__TAURI__.core.invoke;
+      const listen = window.__TAURI__.event.listen;
+      const getCurrentWindow = window.__TAURI__.window.getCurrentWindow;
+
+      const elMinutes = document.getElementById('overlay-minutes');
+      const elSeconds = document.getElementById('overlay-seconds');
+      const elBlockedApp = document.getElementById('blocked-app-name');
+      const elEmergencyCount = document.getElementById('emergency-count');
+      const btnBack = document.getElementById('btn-back');
+      const btnEmergency = document.getElementById('btn-emergency');
+      const confirmOverlay = document.getElementById('confirm-overlay');
+      const confirmMessage = document.getElementById('confirm-message');
+      const confirmYes = document.getElementById('confirm-yes');
+      const confirmNo = document.getElementById('confirm-no');
+      const cancelledMessage = document.getElementById('cancelled-message');
+      const overlayCard = document.querySelector('.overlay-card');
+      const overlayTitle = document.querySelector('.overlay-title');
+
+      let isClosing = false; // 防止重复关闭
+      let pollIntervalId = null; // 轮询定时器 ID
+
+      // 显示过渡画面后关闭窗口
+      // isCompleted: true=自然结束, false=紧急取消
+      function showCancelledAndClose(isCompleted) {
+        if (isClosing) return;
+        isClosing = true;
+
+        // 停止轮询定时器
+        if (pollIntervalId) {
+          clearInterval(pollIntervalId);
+          pollIntervalId = null;
+        }
+
+        if (isCompleted) {
+          overlayTitle.textContent = '🎉 本次专注已完成！';
+          cancelledMessage.textContent = '即将返回桌面...';
+        } else {
+          overlayTitle.textContent = '已取消专注';
+          cancelledMessage.textContent = '✅ 已取消专注';
+        }
+
+        btnBack.style.display = 'none';
+        btnEmergency.style.display = 'none';
+        cancelledMessage.classList.add('show');
+
+        const delay = isCompleted ? 5000 : 2000;
+        setTimeout(async () => {
+          try {
+            await invoke('close_overlay_window');
+          } catch (e) {
+            console.error('关闭覆盖窗口失败:', e);
+          }
+        }, delay);
+      }
+
+      // 获取初始状态
+      try {
+        const status = await invoke('get_timer_status');
+        updateDisplay(status);
+      } catch (e) {
+        console.error('获取初始状态失败:', e);
+      }
+
+      // 监听计时器更新
+      await listen('timer-update', (event) => {
+        updateDisplay(event.payload);
+      });
+
+      // 监听被拦截的 App 名称
+      await listen('blocked-app-detected', (event) => {
+        elBlockedApp.textContent = '已拦截: ' + event.payload;
+      });
+
+      // 兜底：每秒轮询获取最新状态，防止事件丢失
+      pollIntervalId = setInterval(async () => {
+        try {
+          const status = await invoke('get_timer_status');
+          updateDisplay(status);
+        } catch (e) {
+          // 静默忽略轮询错误
+        }
+      }, 1000);
+
+      function updateDisplay(status) {
+        if (!status || isClosing) return;
+        const total = status.remaining_seconds || 0;
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        elMinutes.textContent = String(m).padStart(2, '0');
+        elSeconds.textContent = String(s).padStart(2, '0');
+        elEmergencyCount.textContent = status.emergency_remaining || 0;
+
+        const remaining = status.emergency_remaining || 0;
+        btnEmergency.disabled = remaining <= 0;
+        btnEmergency.textContent = remaining > 0
+          ? '紧急取消（剩余 ' + remaining + ' 次）'
+          : '已无取消次数';
+
+        // 如果计时器已停止，显示过渡后关闭（自然结束）
+        if (status.state === 'idle') {
+          showCancelledAndClose(true);
+        }
+      }
+
+      // 返回按钮 -> 通过后端命令隐藏窗口（取消置顶+退出全屏+隐藏）
+      btnBack.addEventListener('click', async () => {
+        try {
+          await invoke('hide_overlay_window');
+        } catch (e) {
+          console.error('返回失败:', e);
+        }
+      });
+
+      // 紧急取消按钮
+      btnEmergency.addEventListener('click', () => {
+        const count = parseInt(elEmergencyCount.textContent) || 0;
+        if (count <= 0) return;
+
+        confirmMessage.textContent = '确定要取消本次专注吗？\n（剩余取消次数：' + count + '）';
+        confirmOverlay.style.display = 'flex';
+
+        confirmYes.onclick = async () => {
+          confirmOverlay.style.display = 'none';
+          try {
+            await invoke('emergency_cancel');
+            // 直接显示取消过渡（不等轮询检测 idle）
+            showCancelledAndClose(false);
+          } catch (e) {
+            console.error('紧急取消失败:', e);
+          }
+        };
+
+        confirmNo.onclick = () => {
+          confirmOverlay.style.display = 'none';
+        };
+      });
+    }
+
+    init().catch(e => console.error('overlay init error:', e));
+  </script>
+</body>
+</html>

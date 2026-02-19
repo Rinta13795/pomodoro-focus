@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "番茄专注 - 网站屏蔽",
+  "version": "1.0.0",
+  "description": "配合番茄专注 App 屏蔽分心网站",
+  "permissions": [
+    "tabs",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:27190/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [{
+    "resources": ["blocked.html", "blocked.css", "blocked.js"],
+    "matches": ["<all_urls>"]
+  }]
+}

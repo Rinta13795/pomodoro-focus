@@ -1,0 +1,301 @@
+/* Timer Page Styles */
+
+/* 自定义背景图 */
+.timer-bg {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+
+.timer-bg-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+#timer-page {
+  position: relative;
+}
+
+#timer-page .timer-container {
+  position: relative;
+  z-index: 2;
+}
+
+/* 调试：确保开始按钮可点击 */
+#btn-start {
+  position: relative !important;
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+}
+
+.timer-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 120px);
+  text-align: center;
+  transition: background-color 0.5s ease;
+  border-radius: var(--radius);
+  padding: 2rem;
+}
+
+/* 时间标签 */
+.time-labels {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 0.5rem;
+  user-select: none;
+}
+
+.time-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  width: 2ch;
+  text-align: center;
+  /* Each label spans 2 digit widths */
+  min-width: calc(2ch * 2 + 0.1em);
+}
+
+.time-label-spacer {
+  width: 1.4em; /* matches separator width */
+}
+
+/* 运行时隐藏时间标签 */
+body.state-working .time-labels,
+body.state-breaking .time-labels {
+  display: none;
+}
+
+/* 工作中时背景略带红色 */
+body.state-working .timer-container {
+  background: linear-gradient(135deg, rgba(233, 69, 96, 0.05) 0%, rgba(233, 69, 96, 0.02) 100%);
+}
+
+/* 休息中时背景略带绿色 */
+body.state-breaking .timer-container {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.05) 0%, rgba(255, 193, 7, 0.02) 100%);
+}
+
+/* 大号倒计时数字 */
+.timer-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 6.5rem;
+  font-weight: 200;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  color: var(--text-primary);
+  margin-bottom: 1.5rem;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.timer-display span {
+  display: inline-block;
+  min-width: 1ch;
+  text-align: center;
+}
+
+/* 可编辑数字位 */
+.timer-digit {
+  min-width: 1ch !important;
+  padding: 0.05em 0.08em;
+  border-radius: 12px;
+  transition: background 0.15s, color 0.15s;
+  cursor: default;
+}
+
+/* idle 状态下数字可点击编辑 */
+body.state-idle .timer-digit {
+  cursor: pointer;
+}
+
+body.state-idle .timer-digit:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 选中的数字位高亮 */
+.timer-digit.selected {
+  background: var(--primary, #e94560);
+  color: #fff;
+}
+
+.timer-separator {
+  animation: blink 1s infinite;
+  margin: 0 0.2em;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
+/* idle 状态下不闪烁分隔符 */
+body.state-idle .timer-separator {
+  animation: none;
+  opacity: 0.5;
+}
+
+/* 运行状态下数字不可编辑 */
+body.state-working .timer-digit,
+body.state-breaking .timer-digit {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* 状态文字 */
+.timer-status {
+  font-size: 1.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 3rem;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+}
+
+.timer-status.working {
+  color: var(--accent);
+  font-weight: 400;
+}
+
+.timer-status.breaking {
+  color: var(--success, #4ecdc4);
+  font-weight: 400;
+}
+
+/* 控制按钮区域 */
+.timer-controls {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.timer-controls .btn {
+  min-width: 130px;
+  font-size: 1.1rem;
+}
+
+.btn-large {
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  min-width: 150px;
+  font-weight: 500;
+}
+
+/* 应急取消按钮区域 */
+.emergency-container {
+  margin-top: 1rem;
+}
+
+.emergency-container .btn {
+  font-size: 0.95rem;
+  opacity: 0.8;
+  transition: opacity 0.3s ease;
+}
+
+.emergency-container .btn:not(:disabled):hover {
+  opacity: 1;
+}
+
+.emergency-container .btn:disabled {
+  opacity: 0.3;
+}
+
+/* 休息状态醒目提示 */
+body.state-breaking .timer-container::before {
+  content: '☕ 休息时间';
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: var(--success, #4ecdc4);
+  margin-bottom: 1rem;
+  letter-spacing: 0.1em;
+}
+
+body.state-breaking .timer-display {
+  color: var(--success, #4ecdc4) !important;
+}
+
+/* 全屏专注/休息状态布局优化 */
+body.state-working .timer-container,
+body.state-breaking .timer-container {
+  min-height: calc(100vh - 2rem);
+}
+
+body.state-working .timer-display,
+body.state-breaking .timer-display {
+  font-size: clamp(3.5rem, 12vw, 5rem);
+  margin-bottom: 1.5rem;
+}
+
+body.state-working .timer-status,
+body.state-breaking .timer-status {
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+/* 响应式调整 */
+@media (max-width: 600px) {
+  .timer-display {
+    font-size: 4rem;
+  }
+
+  .timer-status {
+    font-size: 1.3rem;
+  }
+
+  .timer-controls .btn {
+    min-width: 110px;
+  }
+
+  .btn-large {
+    padding: 0.8rem 1.5rem;
+    font-size: 1rem;
+  }
+}
+
+/* 确认弹窗样式 */
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-dialog {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  max-width: 360px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+#confirm-message {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.confirm-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
