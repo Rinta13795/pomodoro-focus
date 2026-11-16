@@ -10,7 +10,7 @@
 - **番茄计时器** — 自定义专注时长（精确到秒），支持暂停/继续
 - **App 强制拦截** — 专注期间自动终止黑名单应用（如 QQ、微信），被拦截时弹出全屏覆盖层
 - **网站三层屏蔽** — hosts 文件 + pf 防火墙 + 浏览器扩展，三重机制确保无法绕过
-- **Chrome & Safari 扩展** — 实时拦截黑名单网站，已打开的标签页也会被强制跳转
+- **Chrome / Edge / Safari 扩展** — 实时拦截黑名单网站，已打开的标签页也会被强制跳转
 - **学霸模式** — 紧急取消每月仅 3 次，专注期间无法轻易退出
 - **专注记忆** — 记住上次使用的专注时长，关闭重开自动恢复专注状态
 - **完成提醒** — 专注结束时播放提示音（可在设置中关闭）
@@ -41,7 +41,7 @@
 |------|------|----------|
 | 系统层 | /etc/hosts 重定向 | 所有应用 |
 | 网络层 | pf 防火墙规则 | IP 级别拦截 |
-| 浏览器层 | Chrome/Safari 扩展 | 实时标签页拦截 |
+| 浏览器层 | Chrome/Edge/Safari 扩展 | 实时标签页拦截 |
 
 ## 📦 安装
 
@@ -69,18 +69,13 @@ cargo tauri dev
 cargo tauri build
 ```
 
-### 安装 Chrome 扩展
+### 安装浏览器扩展（Chrome / Edge / Safari）
 
-1. 打开 Chrome，访问 `chrome://extensions/`
-2. 开启右上角"开发者模式"
-3. 点击"加载已解压的扩展程序"
-4. 选择项目中的 `chrome-extension/` 文件夹
+三个浏览器共用 `extension/` 一份代码，详细步骤见 [extension/README.md](extension/README.md)：
 
-### 安装 Safari 扩展
-
-1. 用 Xcode 打开 `safari-extension/番茄专注/番茄专注.xcodeproj`
-2. ⌘R 编译运行
-3. Safari → 设置 → 扩展 → 启用"番茄专注"
+- **Chrome**：`chrome://extensions/` → 开发者模式 → 加载已解压的扩展程序 → 选择 `extension/`
+- **Edge**：`edge://extensions/` → 开发人员模式 → 加载解压缩的扩展 → 选择 `extension/`
+- **Safari**：`node scripts/sync-extension.mjs` → Xcode 打开 `safari-extension/番茄专注/番茄专注.xcodeproj` 编译运行 → Safari 设置 → 扩展 → 启用「番茄专注」
 
 ## 📁 项目结构
 
@@ -116,11 +111,13 @@ pomodoro-focus/
 │       └── models/
 │           ├── config.rs       # 配置数据结构
 │           └── timer.rs        # 计时器数据结构
-├── chrome-extension/           # Chrome 扩展
+├── extension/                  # 浏览器扩展（Chrome / Edge / Safari 共用，MV3）
 │   ├── manifest.json
 │   ├── background.js
 │   └── blocked.html
-└── safari-extension/           # Safari 扩展 Xcode 项目
+├── scripts/sync-extension.mjs  # 把 extension/ 同步进 Safari Xcode 项目
+├── tests/                      # Node 测试（npm test，即 node --test）
+└── safari-extension/           # Safari 扩展 Xcode 项目（资源由同步脚本生成）
 ```
 
 ## ⚙️ 配置

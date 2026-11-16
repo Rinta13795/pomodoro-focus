@@ -89,3 +89,5 @@ interface Config {
 ## 浏览器扩展 HTTP 接口
 
 `GET http://127.0.0.1:27190/status` → `{ "focusing": boolean, "blocked_sites": string[] }`
+
+`focusing` 取自 `timer_running`：从开始专注到整轮结束（`finish_session`）都为 `true`，**包括工作阶段之间的休息**。扩展因此在休息时也会拦截。若以后要在休息时放行，需要在这里新增字段（例如 `phase: "work" | "break"`）并同步修改扩展。
