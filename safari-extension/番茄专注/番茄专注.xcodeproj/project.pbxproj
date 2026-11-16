@@ -109,12 +109,12 @@
 		D16282A02F39AE5300F3B7FC /* 番茄专注 Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "番茄专注 Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D16282A52F39AE5300F3B7FC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D16282A62F39AE5300F3B7FC /* 番茄专注.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "番茄专注.entitlements"; sourceTree = "<group>"; };
-		D16282C62F39AE5300F3B7FC /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = "../../../safari-extension-src/background.js"; sourceTree = "<group>"; };
-		D16282C72F39AE5300F3B7FC /* blocked.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = blocked.js; path = "../../../safari-extension-src/blocked.js"; sourceTree = "<group>"; };
-		D16282C82F39AE5300F3B7FC /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = "../../../safari-extension-src/icons"; sourceTree = "<group>"; };
-		D16282C92F39AE5300F3B7FC /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = "../../../safari-extension-src/manifest.json"; sourceTree = "<group>"; };
-		D16282CA2F39AE5300F3B7FC /* blocked.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = blocked.html; path = "../../../safari-extension-src/blocked.html"; sourceTree = "<group>"; };
-		D16282CB2F39AE5300F3B7FC /* blocked.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = blocked.css; path = "../../../safari-extension-src/blocked.css"; sourceTree = "<group>"; };
+		D16282C62F39AE5300F3B7FC /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = background.js; path = background.js; sourceTree = "<group>"; };
+		D16282C72F39AE5300F3B7FC /* blocked.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = blocked.js; path = blocked.js; sourceTree = "<group>"; };
+		D16282C82F39AE5300F3B7FC /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = icons; path = icons; sourceTree = "<group>"; };
+		D16282C92F39AE5300F3B7FC /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = manifest.json; path = manifest.json; sourceTree = "<group>"; };
+		D16282CA2F39AE5300F3B7FC /* blocked.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = blocked.html; path = blocked.html; sourceTree = "<group>"; };
+		D16282CB2F39AE5300F3B7FC /* blocked.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = blocked.css; path = blocked.css; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -254,7 +254,7 @@
 				D16282CB2F39AE5300F3B7FC /* blocked.css */,
 			);
 			name = Resources;
-			path = "Shared (Extension)";
+			path = "Shared (Extension)/Resources";
 			sourceTree = SOURCE_ROOT;
 		};
 /* End PBXGroup section */

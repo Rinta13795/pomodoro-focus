@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -189,6 +190,13 @@ test('App 未运行：安静放行（fail open）', async () => {
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(fake.updates, []);
   assert.deepEqual(errors, []);
+});
+
+test('Safari Xcode 项目里的资源与 extension/ 保持同步', () => {
+  const res = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'sync-extension.mjs'), '--check'], {
+    encoding: 'utf8',
+  });
+  assert.equal(res.status, 0, res.stdout + res.stderr);
 });
 
 test('拦截页询问状态时返回 focusing', async () => {
