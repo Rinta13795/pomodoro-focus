@@ -1,6 +1,6 @@
 [package]
 name = "pomodoro-focus"
-version = "0.1.0"
+version = "0.2.0"
 description = "番茄专注 - 面向学习的番茄钟，支持 macOS 与 Windows"
 authors = ["Rinta13795"]
 license = "MIT"

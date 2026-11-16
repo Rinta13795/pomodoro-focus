@@ -1,0 +1,16 @@
+{
+  "name": "pomodoro-focus",
+  "private": true,
+  "version": "0.2.0",
+  "description": "番茄专注：面向学习的番茄钟，支持 macOS 与 Windows",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test": "node --test tests/",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
