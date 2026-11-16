@@ -64,9 +64,10 @@ body {
 }
 
 .tomato {
+  display: block;
   width: 72px;
   height: 72px;
-  margin-bottom: 16px;
+  margin: 0 auto 16px;
   animation: breathe 6s ease-in-out infinite;
 }
 
