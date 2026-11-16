@@ -1,4 +1,4 @@
-// 浏览器扩展测试：node --test tests/extension-match.test.mjs
+// 浏览器扩展测试：node --test tests/extension-match.test.mjs（或 npm test）
 //
 // extension/background.js 是单文件经典脚本（为兼容 Safari 不用 ES module），
 // 这里用 node:vm 直接加载这份真实代码，取出其中的函数来测，不复制任何逻辑。
@@ -156,6 +156,24 @@ test('专注中：新导航立即被拦截', async () => {
   await new Promise((r) => setImmediate(r));
 
   assert.deepEqual(fake.updates.map((u) => u.id), [7]);
+});
+
+test('专注中：每次轮询都重新扫描，去重只挡同一网址', async () => {
+  const tabs = [{ id: 1, url: 'https://www.bilibili.com/video/1' }];
+  const fake = fakeBrowser({ tabs, respond: () => ok({ focusing: true, blocked_sites: ['bilibili.com'] }) });
+  const ctx = loadBackground({ chrome: fake.chrome, fetch: fake.fetch });
+  await ctx.refresh();
+  assert.deepEqual(fake.updates.map((u) => u.id), [1]);
+
+  // 状态没变，但标签页 1 换了一个黑名单网址（例如点了“后退”），又新冒出一个标签页
+  tabs[0] = { id: 1, url: 'https://www.bilibili.com/video/2' };
+  tabs.push({ id: 5, url: 'https://live.bilibili.com/' });
+  await ctx.refresh();
+  assert.deepEqual(fake.updates.map((u) => u.id), [1, 1, 5]);
+
+  // 同一标签页、同一网址在去重窗口内重复触发，只跳转一次
+  await ctx.refresh();
+  assert.equal(fake.updates.length, 3);
 });
 
 test('未专注：什么都不做', async () => {

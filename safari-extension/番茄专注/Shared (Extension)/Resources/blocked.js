@@ -1,5 +1,12 @@
 // 番茄专注 - 拦截页逻辑（Chrome / Edge / Safari 共用）
 (function () {
+  // 拦截页只应作为顶层页面出现。被别的网站用 iframe 嵌入时什么都不做，
+  // 否则"关闭此页"拿到的 tabs.getCurrent() 会是外层网页的标签页。
+  if (window.top !== window) {
+    document.documentElement.textContent = '';
+    return;
+  }
+
   const api = globalThis.browser ?? globalThis.chrome;
 
   const QUOTES = [
@@ -52,9 +59,9 @@
 
   function showFinished() {
     $('badge').textContent = '专注已结束';
-    $('title').textContent = '辛苦了，休息一下吧';
+    $('title').textContent = '辛苦了，这一轮专注完成了';
     $('site-line').textContent = '这一轮专注已经结束，可以放心打开了。';
-    $('hint').textContent = '休息完记得回来开始下一个番茄钟。';
+    $('hint').textContent = '准备好了就回来开始下一个番茄钟。';
     $('close-btn').textContent = '关闭此页';
     if (backUrl) {
       $('back-btn').textContent = site ? `返回 ${site}` : '返回原网页';

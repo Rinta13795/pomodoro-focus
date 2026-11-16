@@ -116,7 +116,7 @@ pomodoro-focus/
 │   ├── background.js
 │   └── blocked.html
 ├── scripts/sync-extension.mjs  # 把 extension/ 同步进 Safari Xcode 项目
-├── tests/                      # Node 测试（node --test tests/）
+├── tests/                      # Node 测试（npm test，即 node --test）
 └── safari-extension/           # Safari 扩展 Xcode 项目（资源由同步脚本生成）
 ```
 

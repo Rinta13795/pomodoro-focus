@@ -7,7 +7,8 @@
  *   · Service Worker 活着时每 2 秒拉一次；
  *   · chrome.alarms 每 30 秒唤醒一次（Chrome 允许的最小间隔），防止 Worker 休眠后失联。
  * - 专注中：把命中黑名单的标签页（域名本身或其任意子域名）跳转到 blocked.html，
- *   包括专注开始前就已经打开的标签页。
+ *   包括专注开始前就已经打开的标签页。每次轮询都会重新扫描一遍已打开的标签页，
+ *   这样即使某次导航事件被漏掉（例如从往返缓存恢复），最多 2 秒内也会被拦下。
  * - 新的导航由 webNavigation / tabs.onUpdated 立即检查（使用缓存状态，缓存过旧时先刷新）。
  * - App 没有运行（请求失败）时安静地放行，不打扰正常上网。
  *
@@ -24,7 +25,7 @@ const FAST_POLL_MS = 2000;        // Worker 存活期间的轮询间隔
 const FETCH_TIMEOUT_MS = 1500;
 const FRESH_MS = 5000;            // 导航检查时，缓存在这个时间内视为新鲜
 const GRACE_MS = 15000;           // 请求失败后，上次成功的状态最多再沿用这么久（App 短暂重启不闪断）
-const REDIRECT_DEDUPE_MS = 1500;
+const REDIRECT_DEDUPE_MS = 1500;  // 同一标签页、同一网址的重复跳转在这个时间内只做一次
 const STORAGE_KEY = 'pomodoroStatus';
 
 // ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ let persistedAt = 0;
 let inflight = null;
 let fastTimer = null;
 let ready = Promise.resolve();
-const recentRedirects = new Map(); // tabId -> 上次跳转时间
+const recentRedirects = new Map(); // tabId -> { url, at }：上次跳转的网址和时间
 
 /** 当前生效的状态：最近一次成功结果仍在宽限期内才算数，否则视为未专注（放行）。 */
 function effectiveStatus(now = Date.now()) {
@@ -167,11 +168,10 @@ async function fetchStatus() {
   }
 }
 
-/** 刷新状态；专注刚开始或黑名单变化时，顺带扫描已打开的标签页。并发调用共用同一次请求。 */
+/** 刷新状态；专注中顺带扫描一遍已打开的标签页（tabs.query 开销很小）。并发调用共用同一次请求。 */
 function refresh() {
   if (!inflight) {
     inflight = (async () => {
-      const before = effectiveStatus();
       const next = await fetchStatus();
       if (next) {
         const prev = status;
@@ -179,9 +179,7 @@ function refresh() {
         persistStatus(prev);
       }
       const now = effectiveStatus();
-      if (now.focusing && now.sites.length && (!before.focusing || !sameSites(before.sites, now.sites))) {
-        await redirectOpenTabs(now.sites);
-      }
+      if (now.focusing && now.sites.length) await redirectOpenTabs(now.sites);
       return now;
     })().finally(() => {
       inflight = null;
@@ -210,10 +208,12 @@ function blockedPageUrl(originalUrl, site) {
 
 function redirectTab(tabId, originalUrl, site) {
   if (typeof tabId !== 'number' || tabId < 0) return;
+  // webNavigation 和 tabs.onUpdated 会为同一次导航各触发一次，这里只挡同一网址的重复跳转；
+  // 换了网址（或去重窗口已过）都会重新拦截。
   const now = Date.now();
   const last = recentRedirects.get(tabId);
-  if (last && now - last < REDIRECT_DEDUPE_MS) return;
-  recentRedirects.set(tabId, now);
+  if (last && last.url === originalUrl && now - last.at < REDIRECT_DEDUPE_MS) return;
+  recentRedirects.set(tabId, { url: originalUrl, at: now });
   try {
     const p = api.tabs.update(tabId, { url: blockedPageUrl(originalUrl, site) });
     p?.catch?.(() => {});
@@ -268,9 +268,7 @@ function start() {
   api.alarms?.onAlarm.addListener(async (alarm) => {
     if (alarm.name !== ALARM_NAME) return;
     await ready;
-    const st = await refresh();
-    // 兜底：专注期间每次闹钟都扫一遍已打开的标签页
-    if (st.focusing && st.sites.length) await redirectOpenTabs(st.sites);
+    await refresh(); // 专注中会顺带扫描已打开的标签页
     scheduleFastPoll();
   });
 
