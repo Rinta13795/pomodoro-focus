@@ -63,8 +63,8 @@ interface Config {
 | `get_platform` | – | `'macos' \| 'windows' \| 'linux'` |
 | `start_focus` | `minutes?, seconds?, label?, taskId?` | `TimerStatus` |
 | `pause_focus` / `resume_focus` | – | `TimerStatus` |
-| `stop_focus` | – | `TimerStatus`（工作阶段中停止且已专注 ≥ 60 秒会写入一条 `completed=false` 记录） |
-| `emergency_cancel` | – | `TimerStatus`（同上） |
+| `stop_focus` | – | `TimerStatus`。只用于**跳过休息**；工作阶段调用会返回错误“专注中只能使用紧急取消” |
+| `emergency_cancel` | – | `TimerStatus`（每月次数有限；工作阶段已专注 ≥ 60 秒会写入一条 `completed=false` 记录） |
 | `get_timer_status` | – | `TimerStatus` |
 | `get_history` | – | `FocusRecord[]`（按 `started_at` 升序） |
 | `set_record_note` | `id, note` | – |

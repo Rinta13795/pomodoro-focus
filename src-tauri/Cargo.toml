@@ -1,12 +1,16 @@
 [package]
 name = "pomodoro-focus"
 version = "0.1.0"
-description = "A Pomodoro Focus Timer App"
-authors = ["you"]
+description = "番茄专注 - 面向学习的番茄钟，支持 macOS 与 Windows"
+authors = ["Rinta13795"]
 license = "MIT"
 repository = ""
 edition = "2021"
 rust-version = "1.77.2"
+
+[profile.release]
+lto = true
+strip = true
 
 [lib]
 name = "app_lib"
@@ -25,6 +29,8 @@ chrono = "0.4"
 dirs = "5"
 log = "0.4"
 tiny_http = "0.12"
-plist = "1"
 base64 = "0.22"
 tauri-plugin-dialog = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = "1"
