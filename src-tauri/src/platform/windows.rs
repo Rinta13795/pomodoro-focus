@@ -1,9 +1,8 @@
 //! Windows 实现：hosts 位于 %SystemRoot%\System32\drivers\etc\hosts，
 //! 写入时通过 PowerShell `Start-Process -Verb RunAs` 触发一次 UAC 授权。
-//! Windows 没有 pf，按 IP 的拦截交给浏览器扩展（Chrome / Edge）。
+//! 浏览器内的实时拦截交给扩展（Chrome / Edge）。
 
 use std::fs;
-use std::net::Ipv4Addr;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
@@ -92,7 +91,7 @@ fn run_elevated_script(script: &str) -> Result<(), AppError> {
 
 /// 用管理员权限写入 hosts，并给当前用户授予 hosts 的修改权限，
 /// 这样结束专注时可以不再弹 UAC 直接恢复。
-pub fn write_hosts_elevated(content: &str, _block_ips: &[Ipv4Addr]) -> Result<(), AppError> {
+pub fn write_hosts_elevated(content: &str) -> Result<(), AppError> {
     let tmp = std::env::temp_dir().join("pomodoro_hosts_new");
     fs::write(&tmp, content)
         .map_err(|e| AppError::IoError(format!("写入临时 hosts 失败: {}", e)))?;
@@ -140,8 +139,6 @@ pub fn restore_hosts(content: &str) -> Result<(), AppError> {
     let _ = fs::remove_file(&tmp);
     result
 }
-
-pub fn clear_firewall() {}
 
 pub fn flush_dns() {
     let _ = hidden("ipconfig").arg("/flushdns").output();

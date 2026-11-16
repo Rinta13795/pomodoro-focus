@@ -49,7 +49,13 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 });
             }
             "quit" => {
-                app.state::<AppState>().cleanup_on_exit();
+                let state = app.state::<AppState>();
+                if state.timer_status.lock().unwrap().in_work_phase() {
+                    // 专注中退出会让 App 拦截失效，只能用紧急取消结束
+                    show_main(app);
+                    return;
+                }
+                state.cleanup_on_exit();
                 app.exit(0);
             }
             _ => {}

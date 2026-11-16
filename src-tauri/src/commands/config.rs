@@ -4,7 +4,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use tauri::State;
 
-use crate::models::Config;
+use crate::models::{Config, TimerState};
 use crate::state::AppState;
 use crate::{platform, storage};
 
@@ -13,11 +13,23 @@ pub fn get_config(state: State<AppState>) -> Config {
     state.config.lock().unwrap().clone()
 }
 
-/// 保存配置。黑名单在下一次开始专注时生效。
+/// 保存前端提交的配置。
+/// - 紧急取消计数、上次时长由后端维护，不接受前端覆盖（防止把本月已用次数冲掉）；
+/// - 专注进行中不允许修改黑名单。
 #[tauri::command]
-pub fn save_config(state: State<AppState>, config: Config) -> Result<(), String> {
+pub fn save_config(state: State<AppState>, mut config: Config) -> Result<(), String> {
+    let idle = state.timer_status.lock().unwrap().state == TimerState::Idle;
+    let mut current = state.config.lock().unwrap();
+    config.pomodoro.emergency_used_count = current.pomodoro.emergency_used_count;
+    config.pomodoro.emergency_reset_month = current.pomodoro.emergency_reset_month.clone();
+    config.pomodoro.last_focus_duration = current.pomodoro.last_focus_duration;
+    if !idle {
+        config.blocked_apps = current.blocked_apps.clone();
+        config.blocked_sites = current.blocked_sites.clone();
+        config.pomodoro.emergency_cancel_limit = current.pomodoro.emergency_cancel_limit;
+    }
     config.save().map_err(|e| e.to_string())?;
-    *state.config.lock().unwrap() = config;
+    *current = config;
     Ok(())
 }
 

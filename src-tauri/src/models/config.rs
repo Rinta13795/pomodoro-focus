@@ -110,13 +110,20 @@ impl Config {
         storage::data_file(CONFIG_FILE)
     }
 
+    /// 读取配置；文件不存在时写入默认配置；文件损坏时先备份为 config.json.bad 再用默认配置。
     pub fn load() -> Result<Self, AppError> {
-        match storage::read_json::<Config>(CONFIG_FILE)? {
-            Some(c) => Ok(c),
-            None => {
+        match storage::read_json::<Config>(CONFIG_FILE) {
+            Ok(Some(c)) => Ok(c),
+            Ok(None) => {
                 let c = Config::default();
                 c.save()?;
                 Ok(c)
+            }
+            Err(e) => {
+                let path = Self::path()?;
+                let _ = std::fs::copy(&path, path.with_extension("json.bad"));
+                log::error!("配置文件损坏，已备份为 config.json.bad: {}", e);
+                Err(e)
             }
         }
     }

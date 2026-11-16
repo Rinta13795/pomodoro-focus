@@ -1,7 +1,6 @@
-//! macOS 实现：hosts 写入通过 osascript 请求管理员权限，并用 pf 防火墙按 IP 补充拦截。
+//! macOS 实现：hosts 写入通过 osascript 请求管理员权限。
 
 use std::fs;
-use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -13,8 +12,6 @@ use crate::errors::AppError;
 pub const NAME: &str = "macos";
 pub const HOSTS_PATH: &str = "/etc/hosts";
 pub const LINE_ENDING: &str = "\n";
-
-const PF_ANCHOR: &str = "pomodoro-focus";
 
 /// 绝对不拦截的进程（小写前缀）。
 pub const PROTECTED_PROCESS_PREFIXES: &[&str] = &[
@@ -36,11 +33,11 @@ fn temp_file(name: &str) -> PathBuf {
     std::env::temp_dir().join(name)
 }
 
-/// 用管理员权限写入 hosts，并加载 pf 规则。会弹出一次系统密码框。
+/// 用管理员权限写入 hosts。会弹出一次系统密码框。
 ///
 /// 写入后把 hosts 改为 root:admin 664，这样结束专注时（当前用户属于 admin 组）
 /// 可以不再弹密码直接恢复。旧版本使用 646（所有用户可写），存在被其它程序劫持 DNS 的风险。
-pub fn write_hosts_elevated(content: &str, block_ips: &[Ipv4Addr]) -> Result<(), AppError> {
+pub fn write_hosts_elevated(content: &str) -> Result<(), AppError> {
     let hosts_tmp = temp_file("pomodoro_hosts_new");
     fs::write(&hosts_tmp, content)
         .map_err(|e| AppError::IoError(format!("写入临时 hosts 失败: {}", e)))?;
@@ -50,24 +47,6 @@ pub fn write_hosts_elevated(content: &str, block_ips: &[Ipv4Addr]) -> Result<(),
         tmp = hosts_tmp.display(),
         hosts = HOSTS_PATH
     );
-
-    if !block_ips.is_empty() {
-        let rules_tmp = temp_file("pomodoro_pf_rules.conf");
-        let mut rules = String::from("# Pomodoro Focus\n");
-        for ip in block_ips {
-            rules.push_str(&format!(
-                "block drop out proto tcp from any to {} port {{80, 443}}\n",
-                ip
-            ));
-        }
-        fs::write(&rules_tmp, rules)
-            .map_err(|e| AppError::IoError(format!("写入 pf 规则失败: {}", e)))?;
-        cmd.push_str(&format!(
-            "; pfctl -a {anchor} -f '{rules}' 2>/dev/null; pfctl -E 2>/dev/null; rm -f '{rules}'",
-            anchor = PF_ANCHOR,
-            rules = rules_tmp.display()
-        ));
-    }
     cmd.push_str("; dscacheutil -flushcache; killall -HUP mDNSResponder; true");
 
     let result = run_as_admin(&cmd);
@@ -77,7 +56,6 @@ pub fn write_hosts_elevated(content: &str, block_ips: &[Ipv4Addr]) -> Result<(),
 
 /// 恢复 hosts（结束专注时调用）：先尝试直接写，失败再请求管理员权限。
 pub fn restore_hosts(content: &str) -> Result<(), AppError> {
-    clear_firewall();
     if fs::write(HOSTS_PATH, content).is_ok() {
         flush_dns();
         return Ok(());
@@ -92,13 +70,6 @@ pub fn restore_hosts(content: &str) -> Result<(), AppError> {
     let result = run_as_admin(&cmd);
     let _ = fs::remove_file(&tmp);
     result
-}
-
-/// 清空本应用的 pf anchor（无需密码时可能失败，失败可忽略：规则只对旧 IP 生效）。
-pub fn clear_firewall() {
-    let _ = Command::new("pfctl")
-        .args(["-a", PF_ANCHOR, "-F", "all"])
-        .output();
 }
 
 pub fn flush_dns() {

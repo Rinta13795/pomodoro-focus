@@ -1,5 +1,5 @@
 //! 系统级网站屏蔽：在 hosts 文件里写入一段带标记的屏蔽区块。
-//! 平台细节（提权、防火墙、DNS 刷新）在 crate::platform 中。
+//! 平台细节（提权、DNS 刷新）在 crate::platform 中。
 
 use crate::errors::AppError;
 use crate::platform;
@@ -87,23 +87,11 @@ pub fn block_sites(sites: &[String]) -> Result<(), AppError> {
     }
     let current = platform::read_hosts()
         .map_err(|e| AppError::IoError(format!("读取 hosts 失败: {}", e)))?;
-
-    // 在改 hosts 之前解析 IP，避免解析到我们自己写入的 0.0.0.0
-    let mut ips = Vec::new();
-    if !current.contains(BLOCK_START) {
-        for d in &domains {
-            ips.extend(platform::resolve_ipv4(d));
-        }
-        ips.sort();
-        ips.dedup();
-    }
-
-    platform::write_hosts_elevated(&with_block(&current, &domains), &ips)
+    platform::write_hosts_elevated(&with_block(&current, &domains))
 }
 
 /// 解除屏蔽；hosts 中没有我们的区块时什么都不做。
 pub fn unblock_sites() -> Result<(), AppError> {
-    platform::clear_firewall();
     let current = match platform::read_hosts() {
         Ok(c) => c,
         Err(_) => return Ok(()),

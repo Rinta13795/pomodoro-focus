@@ -52,6 +52,7 @@ fn json_response(body: String, code: u16) -> Response<Cursor<Vec<u8>>> {
     let header = |k: &str, v: &str| Header::from_bytes(k.as_bytes(), v.as_bytes()).unwrap();
     Response::from_data(body.into_bytes())
         .with_status_code(code)
+        // 不返回 Access-Control-Allow-Origin：普通网页读不到专注状态和黑名单，
+        // 浏览器扩展通过 host_permissions 访问不受 CORS 限制。
         .with_header(header("Content-Type", "application/json"))
-        .with_header(header("Access-Control-Allow-Origin", "*"))
 }
