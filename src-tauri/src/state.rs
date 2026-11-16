@@ -29,11 +29,18 @@ impl Worker {
     }
 }
 
+/// 线程句柄的锁即使被 panic 污染也继续使用，保证总能停掉线程、解除屏蔽。
+fn lock_worker(m: &Mutex<Worker>) -> std::sync::MutexGuard<'_, Worker> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub struct AppState {
     pub config: Arc<Mutex<Config>>,
     pub timer_status: Arc<Mutex<TimerStatus>>,
     /// 供浏览器扩展 HTTP 接口读取（专注 + 休息期间为 true）
     pub timer_running: Arc<AtomicBool>,
+    /// start_focus 进行中（可能在等管理员授权）
+    pub starting: AtomicBool,
     pub overlay_suppressed: Arc<AtomicBool>,
     pub suppress_generation: Arc<AtomicU32>,
     pub timer_thread: Mutex<Worker>,
@@ -52,6 +59,7 @@ impl AppState {
             config: Arc::new(Mutex::new(config)),
             timer_status: Arc::new(Mutex::new(status)),
             timer_running: Arc::new(AtomicBool::new(false)),
+            starting: AtomicBool::new(false),
             overlay_suppressed: Arc::new(AtomicBool::new(false)),
             suppress_generation: Arc::new(AtomicU32::new(0)),
             timer_thread: Mutex::new(Worker::default()),
@@ -60,12 +68,12 @@ impl AppState {
     }
 
     pub fn stop_timer_thread(&self) {
-        self.timer_thread.lock().unwrap().stop();
+        lock_worker(&self.timer_thread).stop();
     }
 
     pub fn start_app_blocker(&self, app: AppHandle) {
         let blocked_apps = self.config.lock().unwrap().blocked_apps.clone();
-        let mut worker = self.app_blocker_thread.lock().unwrap();
+        let mut worker = lock_worker(&self.app_blocker_thread);
         worker.stop();
         worker.handle = Some(app_blocker::start_polling(
             blocked_apps,
@@ -76,7 +84,7 @@ impl AppState {
     }
 
     pub fn stop_app_blocker(&self) {
-        self.app_blocker_thread.lock().unwrap().stop();
+        lock_worker(&self.app_blocker_thread).stop();
     }
 
     /// 真正退出应用前调用。专注进行中时保留 hosts 屏蔽，下次启动继续。

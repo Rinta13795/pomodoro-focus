@@ -40,6 +40,27 @@ pub fn start(
     task_id: Option<String>,
 ) -> Result<TimerStatus, String> {
     let state = app.state::<AppState>();
+    // 同一时间只允许一个 start（等待管理员授权期间状态仍是 Idle，需要单独占位）
+    if state
+        .starting
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("正在启动专注，请稍候".to_string());
+    }
+    let result = start_inner(app, minutes, seconds, label, task_id);
+    state.starting.store(false, Ordering::SeqCst);
+    result
+}
+
+fn start_inner(
+    app: &AppHandle,
+    minutes: Option<u32>,
+    seconds: Option<u32>,
+    label: Option<String>,
+    task_id: Option<String>,
+) -> Result<TimerStatus, String> {
+    let state = app.state::<AppState>();
     if state.timer_status.lock().unwrap().state != TimerState::Idle {
         return Err("已经在专注中".to_string());
     }
@@ -55,7 +76,9 @@ pub fn start(
         }
         (work, config.pomodoro.break_minutes, remaining, config.blocked_sites.clone())
     };
-    let total = work_minutes * 60 + seconds.unwrap_or(0);
+    let total = work_minutes
+        .saturating_mul(60)
+        .saturating_add(seconds.unwrap_or(0));
     if total == 0 {
         return Err("专注时长不能为 0".to_string());
     }
@@ -70,7 +93,7 @@ pub fn start(
         state: "working".to_string(),
         work_start_time: now,
         work_end_time: now + total as u64,
-        break_end_time: now + total as u64 + break_minutes as u64 * 60,
+        break_end_time: now + total as u64 + u64::from(break_minutes) * 60,
         work_minutes,
         break_minutes,
         emergency_remaining,
@@ -220,29 +243,38 @@ fn make_record(st: &TimerStatus, ended_at: u64, completed: bool) -> FocusRecord 
 
 /// 写入记录；完成的番茄给关联任务 +1。
 fn persist_record(app: &AppHandle, record: &FocusRecord) {
-    if let Err(e) = history::append(record.clone()) {
-        log::error!("写入专注记录失败: {}", e);
-        return;
+    match history::append(record.clone()) {
+        Ok(true) => {}
+        Ok(false) => return, // 已记录过（例如重启恢复），不要重复给任务 +1
+        Err(e) => {
+            log::error!("写入专注记录失败: {}", e);
+            return;
+        }
     }
     let _ = app.emit("history-updated", ());
     if record.completed {
-        if let Some(task_id) = &record.task_id {
-            let mut planner = Planner::load();
-            if planner.add_pomodoro(task_id) && planner.save().is_ok() {
-                let _ = app.emit("planner-updated", planner);
-            }
+        if let Some(planner) = record.task_id.as_deref().and_then(Planner::increment) {
+            let _ = app.emit("planner-updated", planner);
         }
     }
 }
 
-/// 工作阶段自然结束：写记录并进入休息。
-fn complete_work_phase(app: &AppHandle) -> u32 {
+/// 工作阶段自然结束：写记录并进入休息。返回休息秒数；状态已不在工作阶段时返回 None。
+fn complete_work_phase(app: &AppHandle) -> Option<u32> {
     let state = app.state::<AppState>();
     let (record, status) = {
         let mut st = state.timer_status.lock().unwrap();
+        if !st.in_work_phase() {
+            return None;
+        }
         let record = make_record(&st, now_ts(), true);
-        let break_secs = st.break_minutes * 60;
-        st.state = TimerState::Breaking;
+        let break_secs = st.break_minutes.saturating_mul(60);
+        // 恰好在最后一秒按了暂停：进入“暂停中的休息”
+        if st.state == TimerState::Paused {
+            st.previous_state = Some(TimerState::Breaking);
+        } else {
+            st.state = TimerState::Breaking;
+        }
         st.remaining_seconds = break_secs;
         st.total_seconds = break_secs;
         (record, st.clone())
@@ -255,7 +287,7 @@ fn complete_work_phase(app: &AppHandle) -> u32 {
     }
     let _ = app.emit("timer-work-complete", record);
     emit_status(app, &status);
-    status.total_seconds
+    Some(status.total_seconds)
 }
 
 /// 回到空闲：停止拦截、关闭覆盖窗口、解除网站屏蔽。不会 join 计时线程，可在计时线程中调用。
@@ -321,8 +353,17 @@ fn spawn_ticker(app: &AppHandle) {
 
             if remaining == 0 {
                 if phase == TimerState::Working {
-                    let break_secs = complete_work_phase(&app);
-                    end = SystemTime::now() + Duration::from_secs(break_secs as u64);
+                    match complete_work_phase(&app) {
+                        Some(0) => {
+                            // 休息时长为 0：直接结束
+                            finish_session(&app);
+                            break;
+                        }
+                        Some(break_secs) => {
+                            end = SystemTime::now() + Duration::from_secs(u64::from(break_secs));
+                        }
+                        None => {}
+                    }
                 } else {
                     let _ = app.emit("timer-break-complete", ());
                     finish_session(&app);
@@ -357,7 +398,7 @@ pub fn restore(app: &AppHandle) {
     } else {
         session.work_minutes * 60
     };
-    let break_total = session.break_minutes * 60;
+    let break_total = session.break_minutes.saturating_mul(60);
     let in_work = session.state == "working";
 
     if let Some(rem) = session.paused_remaining {
@@ -395,9 +436,16 @@ pub fn restore(app: &AppHandle) {
 
     if !site_blocker::is_blocking_active() {
         let sites = state.config.lock().unwrap().blocked_sites.clone();
+        let handle = app.clone();
         thread::spawn(move || {
             if let Err(e) = site_blocker::block_sites(&sites) {
                 log::warn!("恢复网站屏蔽失败: {}", e);
+            }
+            // 授权期间会话可能已经结束，此时撤销刚写入的屏蔽
+            let idle = handle.state::<AppState>().timer_status.lock().unwrap().state
+                == TimerState::Idle;
+            if idle {
+                let _ = site_blocker::unblock_sites();
             }
         });
     }

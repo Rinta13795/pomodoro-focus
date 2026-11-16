@@ -48,17 +48,21 @@ fn save(records: Vec<FocusRecord>) -> Result<(), AppError> {
     storage::write_json(HISTORY_FILE, &HistoryFile { version: 1, records })
 }
 
-pub fn append(record: FocusRecord) -> Result<(), AppError> {
+/// 追加一条记录；同 id 已存在时返回 Ok(false)。
+pub fn append(record: FocusRecord) -> Result<bool, AppError> {
+    let _guard = storage::lock();
     let mut records = load();
     if records.iter().any(|r| r.id == record.id) {
-        return Ok(());
+        return Ok(false);
     }
     records.push(record);
     records.sort_by_key(|r| r.started_at);
-    save(records)
+    save(records)?;
+    Ok(true)
 }
 
 pub fn set_note(id: &str, note: Option<String>) -> Result<(), AppError> {
+    let _guard = storage::lock();
     let mut records = load();
     let record = records
         .iter_mut()

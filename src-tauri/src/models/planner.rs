@@ -31,7 +31,19 @@ impl Planner {
     }
 
     pub fn save(&self) -> Result<(), AppError> {
+        let _guard = storage::lock();
         storage::write_json(PLANNER_FILE, self)
+    }
+
+    /// 在锁内重新读取并给任务 +1，返回更新后的计划。
+    pub fn increment(task_id: &str) -> Option<Planner> {
+        let _guard = storage::lock();
+        let mut planner = Planner::load();
+        if !planner.add_pomodoro(task_id) {
+            return None;
+        }
+        storage::write_json(PLANNER_FILE, &planner).ok()?;
+        Some(planner)
     }
 
     /// 给任务记一个完成的番茄，返回是否找到了该任务。

@@ -43,11 +43,15 @@ pub fn expand_domains(sites: &[String]) -> Vec<String> {
 
 /// 去掉 hosts 中我们写入的区块。
 pub fn strip_block(content: &str) -> String {
+    // 只有 START 没有 END（被手动改坏）时，只删掉 START 这一行，不要吞掉后面的内容
+    let has_end_after_start = content
+        .find(BLOCK_START)
+        .is_some_and(|i| content[i..].contains(BLOCK_END));
     let mut lines = Vec::new();
     let mut inside = false;
     for line in content.lines() {
         if line.contains(BLOCK_START) {
-            inside = true;
+            inside = has_end_after_start;
         } else if line.contains(BLOCK_END) {
             inside = false;
         } else if !inside {
@@ -80,7 +84,14 @@ pub fn is_blocking_active() -> bool {
 }
 
 /// 屏蔽网站（会请求一次管理员权限）。
+static HOSTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn hosts_lock() -> std::sync::MutexGuard<'static, ()> {
+    HOSTS_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub fn block_sites(sites: &[String]) -> Result<(), AppError> {
+    let _guard = hosts_lock();
     let domains = expand_domains(sites);
     if domains.is_empty() {
         return Ok(());
@@ -92,6 +103,7 @@ pub fn block_sites(sites: &[String]) -> Result<(), AppError> {
 
 /// 解除屏蔽；hosts 中没有我们的区块时什么都不做。
 pub fn unblock_sites() -> Result<(), AppError> {
+    let _guard = hosts_lock();
     let current = match platform::read_hosts() {
         Ok(c) => c,
         Err(_) => return Ok(()),
@@ -138,5 +150,12 @@ mod tests {
         // 重复屏蔽不会叠加区块
         let twice = with_block(&blocked, &["a.com".into()]);
         assert_eq!(twice.matches(BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn broken_block_keeps_following_lines() {
+        let nl = platform::LINE_ENDING;
+        let broken = format!("a{nl}{BLOCK_START}{nl}b{nl}c{nl}");
+        assert_eq!(strip_block(&broken), format!("a{nl}b{nl}c{nl}"));
     }
 }

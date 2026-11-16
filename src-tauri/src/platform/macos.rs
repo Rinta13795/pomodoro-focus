@@ -42,12 +42,11 @@ pub fn write_hosts_elevated(content: &str) -> Result<(), AppError> {
     fs::write(&hosts_tmp, content)
         .map_err(|e| AppError::IoError(format!("写入临时 hosts 失败: {}", e)))?;
 
-    let mut cmd = format!(
+    let cmd = format!(
         "cp '{tmp}' {hosts} && chown root:admin {hosts} && chmod 664 {hosts}",
         tmp = hosts_tmp.display(),
         hosts = HOSTS_PATH
-    );
-    cmd.push_str("; dscacheutil -flushcache; killall -HUP mDNSResponder; true");
+    ) + " || exit 1; dscacheutil -flushcache; killall -HUP mDNSResponder; exit 0";
 
     let result = run_as_admin(&cmd);
     let _ = fs::remove_file(&hosts_tmp);
@@ -63,7 +62,7 @@ pub fn restore_hosts(content: &str) -> Result<(), AppError> {
     let tmp = temp_file("pomodoro_hosts_restore");
     fs::write(&tmp, content)?;
     let cmd = format!(
-        "cp '{}' {} && dscacheutil -flushcache; killall -HUP mDNSResponder; true",
+        "cp '{}' {} || exit 1; dscacheutil -flushcache; killall -HUP mDNSResponder; exit 0",
         tmp.display(),
         HOSTS_PATH
     );

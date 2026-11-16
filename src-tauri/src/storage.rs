@@ -4,6 +4,8 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -11,6 +13,14 @@ use serde::Serialize;
 use crate::errors::AppError;
 
 const APP_DIR_NAME: &str = "pomodoro-focus";
+
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// “读-改-写”数据文件时持有这把锁，避免计时线程和界面同时写导致丢数据。
+pub fn lock() -> MutexGuard<'static, ()> {
+    WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 pub fn data_dir() -> Result<PathBuf, AppError> {
     let base = dirs::data_dir()
@@ -37,7 +47,8 @@ pub fn write_json<T: Serialize>(name: &str, value: &T) -> Result<(), AppError> {
     let dir = data_dir()?;
     fs::create_dir_all(&dir)?;
     let path = dir.join(name);
-    let tmp = dir.join(format!("{}.tmp", name));
+    let n = TMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let tmp = dir.join(format!("{}.{}.{}.tmp", name, std::process::id(), n));
     fs::write(&tmp, serde_json::to_string_pretty(value)?)?;
     fs::rename(&tmp, &path)?;
     Ok(())

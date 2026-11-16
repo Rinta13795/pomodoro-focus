@@ -51,7 +51,16 @@ fn hidden(program: &str) -> Command {
 
 /// PowerShell 单引号字符串转义。
 fn ps_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
+    let mut out = String::from("'");
+    for c in s.chars() {
+        // PowerShell 把这几种弯引号也当作单引号
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
 }
 
 /// 以管理员身份运行一段 PowerShell 脚本（弹出 UAC）。
@@ -66,9 +75,12 @@ fn run_elevated_script(script: &str) -> Result<(), AppError> {
     // UAC 被取消时 Start-Process 抛出 Win32Exception(1223 = ERROR_CANCELLED)，
     // 用退出码区分，避免依赖本地化的错误文本。
     let launcher = format!(
-        "try {{ $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden \
-         -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('\"' + {} + '\"')); exit $p.ExitCode }} \
-         catch {{ $e = $_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e = $e.InnerException }}; exit 2 }}",
+        "try {{ $psi = New-Object System.Diagnostics.ProcessStartInfo 'powershell.exe'; \
+         $psi.Verb = 'runas'; $psi.UseShellExecute = $true; $psi.WindowStyle = 'Hidden'; \
+         $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -File \"' + {} + '\"'; \
+         $p = [System.Diagnostics.Process]::Start($psi); $p.WaitForExit(); exit $p.ExitCode }} \
+         catch {{ $e = $_.Exception; while ($e) {{ if ($e.NativeErrorCode -eq 1223) {{ exit 1223 }}; $e = $e.InnerException }}; \
+         [Console]::Error.WriteLine($_.Exception.Message); exit 2 }}",
         ps_quote(&script_path.to_string_lossy())
     );
 
@@ -227,7 +239,8 @@ fn exe_name_from_lnk_bytes(data: &[u8]) -> Option<String> {
     let wide = String::from_utf16_lossy(&utf16);
     let ansi = String::from_utf8_lossy(data).to_string();
     for text in [wide, ansi] {
-        let lower = text.to_lowercase();
+        // to_ascii_lowercase 不改变字节长度，下标可以安全用于原字符串
+        let lower = text.to_ascii_lowercase();
         if let Some(end) = lower.rfind(".exe") {
             let head = &text[..end];
             let start = head
@@ -245,4 +258,23 @@ fn exe_name_from_lnk_bytes(data: &[u8]) -> Option<String> {
 
 pub fn app_icon_base64(_app_name: &str) -> Result<String, String> {
     Err("Windows 暂不支持读取应用图标".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lnk_parsing_never_panics_on_odd_bytes() {
+        // U+212A 小写后字节长度会变，旧实现在这里 panic
+        let text = "\u{212A}\0C:\\腾讯\\微信.exe";
+        let bytes: Vec<u8> = text.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        assert_eq!(exe_name_from_lnk_bytes(&bytes).as_deref(), Some("微信"));
+        assert_eq!(exe_name_from_lnk_bytes(b"xx C:\\Apps\\WeChat.exe\0").as_deref(), Some("WeChat"));
+    }
+
+    #[test]
+    fn quotes_smart_apostrophes() {
+        assert_eq!(ps_quote("a'b\u{2019}c"), "'a''b\u{2019}\u{2019}c'");
+    }
 }

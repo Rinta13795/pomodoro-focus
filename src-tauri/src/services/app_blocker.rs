@@ -42,12 +42,12 @@ pub fn start_polling(
     app: AppHandle,
     overlay_suppressed: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
-    let entries: Vec<(String, Vec<String>)> = blocked_apps
-        .iter()
-        .map(|a| (a.clone(), platform::process_name_candidates(a)))
-        .collect();
-
     thread::spawn(move || {
+        // 解析进程名可能读文件，放在线程里做，不占用调用方的锁
+        let entries: Vec<(String, Vec<String>)> = blocked_apps
+            .iter()
+            .map(|a| (a.clone(), platform::process_name_candidates(a)))
+            .collect();
         let mut system = System::new();
         let mut failed: HashMap<Pid, u32> = HashMap::new();
         while !stop_signal.load(Ordering::SeqCst) {

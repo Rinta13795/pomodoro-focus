@@ -12,8 +12,10 @@ pub async fn start_focus(
     label: Option<String>,
     task_id: Option<String>,
 ) -> Result<TimerStatus, String> {
-    // async 命令在后台线程执行：等待管理员授权时不会卡住界面
-    focus::start(&app, minutes, seconds, label, task_id)
+    // 等待管理员授权可能很久，放到阻塞线程池，不卡界面也不占用异步运行时
+    tauri::async_runtime::spawn_blocking(move || focus::start(&app, minutes, seconds, label, task_id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -28,7 +30,7 @@ pub fn resume_focus(app: AppHandle) -> Result<TimerStatus, String> {
 
 /// 结束当前会话。工作阶段只能通过紧急取消结束（学霸模式），这里只用于跳过休息。
 #[tauri::command]
-pub fn stop_focus(app: AppHandle, state: State<AppState>) -> Result<TimerStatus, String> {
+pub async fn stop_focus(app: AppHandle, state: State<'_, AppState>) -> Result<TimerStatus, String> {
     if state.timer_status.lock().unwrap().in_work_phase() {
         return Err("专注中只能使用紧急取消".to_string());
     }
@@ -36,7 +38,7 @@ pub fn stop_focus(app: AppHandle, state: State<AppState>) -> Result<TimerStatus,
 }
 
 #[tauri::command]
-pub fn emergency_cancel(app: AppHandle) -> Result<TimerStatus, String> {
+pub async fn emergency_cancel(app: AppHandle) -> Result<TimerStatus, String> {
     focus::emergency_cancel(&app)
 }
 
