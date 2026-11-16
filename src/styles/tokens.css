@@ -1,0 +1,73 @@
+/* 设计 token：米白纸面 + 墨色四阶 + 单一赭橘强调。主窗口与覆盖层共用。 */
+:root {
+  color-scheme: light dark;
+
+  --paper: #faf9f5;
+  --ink: #141413;
+  --ink-body: #2e2d29;
+  --ink-soft: #5c5b56;
+  --ink-faint: #8b8983;
+  --rule: #e7e5de;
+  --accent: #d97757;
+  --desk: #e9e8e4;
+  --veil: rgba(250, 249, 245, 0.84);
+
+  /* 热力图墨阶：0 = 空，1–4 由淡到浓 */
+  --heat-0: #ecebe5;
+  --heat-1: #d6d4cc;
+  --heat-2: #a9a79f;
+  --heat-3: #6b6a64;
+  --heat-4: #2e2d29;
+
+  --sans: "Geist", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --mono: "Geist Mono", "SF Mono", "SFMono-Regular", "Cascadia Mono", "Consolas", "Noto Sans SC",
+    "PingFang SC", "Microsoft YaHei", monospace;
+
+  /* 网页字阶 = 简历字阶 ×1.17 */
+  --fs-name: 38px;
+  --fs-role: 17px;
+  --fs-title: 16px;
+  --fs-tagline: 15px;
+  --fs-body: 14px;
+  --fs-code: 12px;
+  --fs-meta: 11px;
+  --fs-tag: 10.5px;
+  --fs-label-en: 10px;
+  /* 计时数字：唯一超出字阶表的层级（见偏差申报） */
+  --fs-timer: 56px;
+
+  --gap-block: 32px;
+  --gap-entry: 20px;
+  --gap-label: 17px;
+  --gutter: 48px;
+  --radius: 5px;
+  --ease: 0.15s ease;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --gap-block: 24px;
+    --gap-entry: 16px;
+    --gutter: 20px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1c1b19;
+    --ink: #f2f0e9;
+    --ink-body: #d9d6cd;
+    --ink-soft: #a5a298;
+    --ink-faint: #77746c;
+    --rule: #34322e;
+    --desk: #141412;
+    --veil: rgba(28, 27, 25, 0.84);
+
+    --heat-0: #2a2926;
+    --heat-1: #4d4b46;
+    --heat-2: #7f7c74;
+    --heat-3: #b8b5ab;
+    --heat-4: #f2f0e9;
+  }
+}
