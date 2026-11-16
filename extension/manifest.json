@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "番茄专注 - 网站屏蔽",
+  "version": "2.0.0",
+  "description": "配合番茄专注 App 使用：专注期间自动拦截分心网站，帮你回到学习。",
+  "icons": {
+    "32": "icons/icon32.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "alarms",
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:27190/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html", "blocked.css", "blocked.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
