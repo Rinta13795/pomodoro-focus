@@ -4,200 +4,216 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>番茄专注</title>
-  <link rel="stylesheet" href="styles/main.css">
-  <link rel="stylesheet" href="styles/timer.css">
-  <link rel="stylesheet" href="styles/settings.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/views.css">
 </head>
-<body>
-  <div id="app">
-    <!-- Timer Page -->
-    <div id="timer-page" class="page active">
-      <div id="timer-bg" class="timer-bg" style="display:none;"></div>
-      <div id="timer-bg-overlay" class="timer-bg-overlay" style="display:none;"></div>
-      <div class="timer-container">
-        <!-- 时间标签 -->
-        <div class="time-labels" id="time-labels">
-          <span class="time-label">小时</span>
-          <span class="time-label-spacer"></span>
-          <span class="time-label">分钟</span>
-          <span class="time-label-spacer"></span>
-          <span class="time-label">秒</span>
-        </div>
+<body data-view="focus" class="state-idle">
+  <div class="bg-layer" id="bg-layer" hidden></div>
 
-        <!-- 大号时间显示 / 可编辑时间选择器 -->
-        <div class="timer-display" id="timer-display">
-          <span class="timer-digit" data-digit="0" id="digit-h0">0</span>
-          <span class="timer-digit" data-digit="1" id="digit-h1">0</span>
-          <span class="timer-separator">:</span>
-          <span class="timer-digit" data-digit="2" id="digit-m0">2</span>
-          <span class="timer-digit" data-digit="3" id="digit-m1">5</span>
-          <span class="timer-separator">:</span>
-          <span class="timer-digit" data-digit="4" id="digit-s0">0</span>
-          <span class="timer-digit" data-digit="5" id="digit-s1">0</span>
-        </div>
-
-        <!-- 当前状态文字 -->
-        <div class="timer-status" id="timer-status">未开始</div>
-
-        <!-- 控制按钮 -->
-        <div class="timer-controls">
-          <button id="btn-start" class="btn btn-primary btn-large">开始专注</button>
-          <button id="btn-skip-break" class="btn btn-secondary btn-large" style="display:none">跳过休息</button>
-        </div>
-
-        <!-- 应急取消按钮 -->
-        <div class="emergency-container">
-          <button id="btn-emergency" class="btn btn-danger" disabled>
-            🆘 紧急取消 (<span id="emergency-count">2</span>)
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Settings Page -->
-    <div id="settings-page" class="page">
-      <div class="settings-container">
-        <!-- 计时设置 -->
-        <div class="settings-card">
-          <h3 class="card-title">⏱️ 计时设置</h3>
-          <div class="card-content">
-            <div class="slider-group">
-              <label>
-                <span>工作时长</span>
-                <span class="slider-value"><span id="work-minutes-value">25</span> 分钟</span>
-              </label>
-              <input type="range" id="work-minutes" min="15" max="60" value="25" step="5">
-            </div>
-            <div class="slider-group">
-              <label>
-                <span>休息时长</span>
-                <span class="slider-value"><span id="break-minutes-value">5</span> 分钟</span>
-              </label>
-              <input type="range" id="break-minutes" min="3" max="15" value="5" step="1">
-            </div>
-            <div class="slider-group">
-              <label>
-                <span>紧急取消次数</span>
-                <span class="slider-value"><span id="emergency-limit-value">2</span> 次</span>
-              </label>
-              <input type="range" id="emergency-limit" min="0" max="5" value="2" step="1">
-            </div>
-            <div class="toggle-group">
-              <label>
-                <span>完成提醒音</span>
-                <label class="schedule-toggle">
-                  <input type="checkbox" id="sound-toggle" checked>
-                  <span class="schedule-toggle-slider"></span>
-                </label>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- App 黑名单 -->
-        <div class="settings-card">
-          <h3 class="card-title">🖼️ 背景图片</h3>
-          <div class="card-content">
-            <div id="bg-preview-container" class="bg-preview-container" style="display:none;">
-              <img id="bg-preview" class="bg-preview" alt="背景预览" />
-            </div>
-            <div class="bg-buttons">
-              <button id="btn-choose-bg" class="btn btn-secondary">选择图片</button>
-              <button id="btn-clear-bg" class="btn btn-danger" style="display:none;">恢复默认</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- App 黑名单 -->
-        <div class="settings-card">
-          <h3 class="card-title">🚫 App 黑名单</h3>
-          <div class="card-content">
-            <div id="blocked-apps-list" class="list-container">
-              <!-- App 列表将在这里渲染 -->
-            </div>
-            <div class="add-item-container">
-              <div class="app-input-wrapper">
-                <input type="text" id="new-app-input" placeholder="搜索已安装的 App..." autocomplete="off">
-                <div id="app-suggestions" class="app-suggestions" style="display: none;"></div>
-              </div>
-              <button id="btn-add-app" class="btn btn-secondary">添加</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 网站黑名单 -->
-        <div class="settings-card">
-          <h3 class="card-title">🌐 网站黑名单</h3>
-          <div class="card-content">
-            <div id="blocked-sites-list" class="list-container">
-              <!-- 网站列表将在这里渲染 -->
-            </div>
-            <div class="add-item-container">
-              <input type="text" id="new-site-input" placeholder="输入域名（如 youtube.com）">
-              <button id="btn-add-site" class="btn btn-secondary">添加</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 定时计划 -->
-        <div class="settings-card">
-          <h3 class="card-title">📅 定时计划</h3>
-          <div class="card-content">
-            <div id="schedules-list" class="list-container">
-              <!-- 时间段列表将在这里渲染 -->
-            </div>
-            <button id="btn-add-schedule" class="btn btn-secondary">添加时间段</button>
-          </div>
-        </div>
-
-        <!-- 模式切换 -->
-        <div class="settings-card">
-          <h3 class="card-title">🔄 工作模式</h3>
-          <div class="card-content">
-            <div class="mode-toggle-container">
-              <span class="mode-label">手动模式</span>
-              <label class="toggle-switch">
-                <input type="checkbox" id="mode-toggle">
-                <span class="toggle-slider"></span>
-              </label>
-              <span class="mode-label">定时模式</span>
-            </div>
-            <p class="mode-description" id="mode-description">
-              手动模式：需要手动点击"开始专注"按钮
-            </p>
-          </div>
-        </div>
-
-        <!-- 配置路径 -->
-        <div class="config-path">
-          配置文件：<code id="config-path"></code>
-        </div>
-      </div>
-    </div>
-
-    <!-- Bottom Navigation -->
-    <nav class="bottom-nav">
-      <button class="nav-btn active" data-page="timer">
-        <span class="nav-icon">⏱️</span>
-        <span class="nav-label">计时器</span>
-      </button>
-      <button class="nav-btn" data-page="settings">
-        <span class="nav-icon">⚙️</span>
-        <span class="nav-label">设置</span>
-      </button>
+  <header class="app-header">
+    <div class="brand">番茄专注<span class="dot">。</span></div>
+    <nav class="tabs" role="tablist" aria-label="页面">
+      <button class="tab" role="tab" type="button" data-view="focus" aria-selected="true">专注</button>
+      <button class="tab" role="tab" type="button" data-view="stats" aria-selected="false">统计</button>
+      <button class="tab" role="tab" type="button" data-view="settings" aria-selected="false">设置</button>
     </nav>
-  </div>
+  </header>
 
-  <!-- 确认弹窗 -->
-  <div id="confirm-overlay" class="confirm-overlay" style="display: none;">
-    <div class="confirm-dialog">
-      <p id="confirm-message">确定要取消本次专注吗？</p>
-      <div class="confirm-buttons">
-        <button id="confirm-yes" class="btn btn-danger">确定取消</button>
-        <button id="confirm-no" class="btn btn-primary">继续专注</button>
+  <main>
+    <!-- ============ 专注 ============ -->
+    <section class="view" id="view-focus" role="tabpanel">
+      <div class="block">
+        <h2 class="block-label"><span class="cn">今日</span><span class="en">Today</span><span class="aside" id="today-date"></span></h2>
+        <div class="today">
+          <svg class="ring" viewBox="0 0 80 80" aria-hidden="true">
+            <circle class="ring-track" cx="40" cy="40" r="34"></circle>
+            <circle class="ring-bar" id="ring-bar" cx="40" cy="40" r="34" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 40 40)"></circle>
+            <circle class="ring-tip" id="ring-tip" cx="40" cy="6" r="3"></circle>
+            <text class="ring-text" id="ring-text" x="40" y="40" text-anchor="middle" dominant-baseline="central">0%</text>
+          </svg>
+          <div class="today-text">
+            <p><span class="strong" id="today-minutes">0 分钟</span><span class="soft"> / 目标 <span id="today-goal">2 小时</span></span></p>
+            <div class="chips">
+              <span class="tag" id="streak-tag" title="专注 ≥ 25 分钟或完成 1 个番茄，这一天就计入连续">连续 0 天</span>
+              <span class="tag" id="today-pomos">0 个番茄</span>
+            </div>
+            <p class="goal-msg soft" id="goal-msg"></p>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
+
+      <div id="reflection-slot"></div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">专注</span><span class="en">Focus</span></h2>
+        <div class="timer">
+          <div class="digits" id="digits">
+            <div class="group"><div class="pair"><span class="digit">0</span><span class="digit">0</span></div><span class="unit">时</span></div>
+            <span class="sep">:</span>
+            <div class="group"><div class="pair"><span class="digit">2</span><span class="digit">5</span></div><span class="unit">分</span></div>
+            <span class="sep">:</span>
+            <div class="group"><div class="pair"><span class="digit">0</span><span class="digit">0</span></div><span class="unit">秒</span></div>
+          </div>
+          <p class="timer-status" id="timer-status">准备开始</p>
+        </div>
+
+        <div class="setup idle-only">
+          <div class="setup-row"><span class="field-label">时长</span><div class="chips" id="preset-chips"></div></div>
+          <div class="setup-row"><span class="field-label">科目</span><div class="chips" id="label-chips"></div></div>
+          <div class="setup-row"><span class="field-label">任务</span><p class="target" id="target-line"></p></div>
+        </div>
+
+        <div class="controls">
+          <button id="btn-start" class="btn btn--primary btn--wide" type="button">开始专注</button>
+          <button id="btn-skip-break" class="btn btn--wide" type="button" hidden>跳过休息</button>
+          <button id="btn-emergency" class="link" type="button" disabled>紧急取消</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">今日计划</span><span class="en">Plan</span><span class="aside" id="plan-aside"></span></h2>
+        <form id="plan-form" class="form-row plan-form" autocomplete="off">
+          <input class="field" id="plan-title" maxlength="60" placeholder="接下来具体做什么？如：高数 3.2 课后题" aria-label="任务">
+          <span class="select-wrap" title="预计番茄数">
+            <select class="field" id="plan-estimate" aria-label="预计番茄数"></select>
+          </span>
+          <button class="btn" type="submit">添加</button>
+        </form>
+        <ul class="tasks" id="task-list"></ul>
+        <details class="overdue" id="overdue" hidden>
+          <summary><span class="field-label">未完成</span> <span class="meta" id="overdue-count"></span></summary>
+          <ul class="tasks" id="overdue-list"></ul>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============ 统计 ============ -->
+    <section class="view" id="view-stats" role="tabpanel" hidden>
+      <p class="block empty" id="stats-error" hidden>暂时读不到专注记录。等后端更新后，这里会长出你的专注地图。</p>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">概览</span><span class="en">Overview</span></h2>
+        <div class="summary" id="summary"></div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">专注地图</span><span class="en">Activity</span><span class="aside" id="heat-aside"></span></h2>
+        <div class="heatmap" id="heatmap"></div>
+        <div class="heat-legend meta">
+          <span>少</span>
+          <i class="lv lv-0"></i><i class="lv lv-1"></i><i class="lv lv-2"></i><i class="lv lv-3"></i><i class="lv lv-4"></i>
+          <span>多</span>
+          <span class="legend-grace"><i class="lv lv-0 grace"></i>休息日</span>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">最近 7 天</span><span class="en">Week</span><span class="aside" id="bars-aside"></span></h2>
+        <div class="bars" id="bars"></div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">本周科目</span><span class="en">Subjects</span></h2>
+        <div class="by-label" id="by-label"></div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">最近记录</span><span class="en">Records</span></h2>
+        <ul class="records" id="records"></ul>
+        <button class="link more" id="records-more" type="button" hidden>显示更多</button>
+      </div>
+      <div class="tooltip" id="heat-tip" hidden></div>
+    </section>
+
+    <!-- ============ 设置 ============ -->
+    <section class="view" id="view-settings" role="tabpanel" hidden>
+      <div class="block">
+        <h2 class="block-label"><span class="cn">计时</span><span class="en">Timer</span></h2>
+        <div class="setting">
+          <div class="setting-head"><span>默认专注时长</span><span class="meta" id="work-minutes-value"></span></div>
+          <input type="range" id="work-minutes" min="15" max="90" step="5" aria-label="默认专注时长">
+        </div>
+        <div class="setting">
+          <div class="setting-head"><span>休息时长</span><span class="meta" id="break-minutes-value"></span></div>
+          <input type="range" id="break-minutes" min="3" max="20" step="1" aria-label="休息时长">
+        </div>
+        <div class="setting">
+          <div class="setting-head"><span>每日目标</span><span class="meta" id="daily-goal-value"></span></div>
+          <input type="range" id="daily-goal" min="30" max="480" step="15" aria-label="每日目标">
+        </div>
+        <div class="setting">
+          <div class="setting-head"><span>每月紧急取消次数</span><span class="meta" id="emergency-limit-value"></span></div>
+          <input type="range" id="emergency-limit" min="0" max="5" step="1" aria-label="每月紧急取消次数">
+        </div>
+        <div class="setting setting--inline">
+          <span>完成提醒音</span>
+          <label class="switch"><input type="checkbox" id="sound-toggle" aria-label="完成提醒音"><span></span></label>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">科目标签</span><span class="en">Labels</span></h2>
+        <div class="chips" id="label-list"></div>
+        <form class="form-row spaced" id="label-form" autocomplete="off">
+          <input class="field" id="label-input" maxlength="12" placeholder="新科目，如：线性代数" aria-label="新科目">
+          <button class="btn" type="submit">添加</button>
+        </form>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">背景图片</span><span class="en">Background</span></h2>
+        <img class="bg-preview" id="bg-preview" alt="背景预览" hidden>
+        <div class="form-row">
+          <button class="btn" id="btn-choose-bg" type="button">选择图片</button>
+          <button class="btn" id="btn-clear-bg" type="button" hidden>恢复默认</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">App 黑名单</span><span class="en">Apps</span></h2>
+        <ul class="rows" id="app-list"></ul>
+        <div class="form-row spaced">
+          <div class="suggest-wrap">
+            <input class="field" id="app-input" placeholder="搜索已安装的 App" aria-label="搜索已安装的 App" role="combobox" aria-expanded="false" aria-controls="app-suggestions" autocomplete="off">
+            <ul class="suggestions" id="app-suggestions" role="listbox" hidden></ul>
+          </div>
+          <button class="btn" id="btn-add-app" type="button">添加</button>
+        </div>
+        <p class="hint" data-platform="windows" hidden>Windows 上按进程名拦截；部分 App 读不到图标时会显示首字母。</p>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">网站黑名单</span><span class="en">Sites</span></h2>
+        <ul class="rows" id="site-list"></ul>
+        <form class="form-row spaced" id="site-form" autocomplete="off">
+          <input class="field" id="site-input" placeholder="输入域名，如 bilibili.com" aria-label="网站域名">
+          <button class="btn" type="submit">添加</button>
+        </form>
+        <p class="hint" data-platform="macos">开始专注时会修改 /etc/hosts 并启用防火墙规则，需要输入一次管理员密码。配合 Chrome 或 Safari 扩展，已打开的标签页也会被拦截。</p>
+        <p class="hint" data-platform="windows" hidden>开始专注时会修改 hosts 文件，系统会弹出管理员权限（UAC）确认。推荐同时安装 Chrome / Edge 扩展：拦截更及时，已打开的标签页也会被拦截。</p>
+        <p class="hint" data-platform="linux" hidden>开始专注时会修改 /etc/hosts，需要管理员权限。推荐同时安装 Chrome 扩展。</p>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">定时计划</span><span class="en">Schedule</span></h2>
+        <ul class="rows" id="schedule-list"></ul>
+        <button class="btn spaced" id="btn-add-schedule" type="button">添加时间段</button>
+      </div>
+
+      <div class="block">
+        <h2 class="block-label"><span class="cn">工作模式</span><span class="en">Mode</span></h2>
+        <div class="setting setting--inline">
+          <span>定时模式</span>
+          <label class="switch"><input type="checkbox" id="mode-toggle" aria-label="定时模式"><span></span></label>
+        </div>
+        <p class="hint" id="mode-desc"></p>
+      </div>
+
+      <p class="footer"><span class="mark">■</span> 配置文件 <span id="config-path"></span></p>
+    </section>
+  </main>
 
   <script type="module" src="js/app.js"></script>
 </body>

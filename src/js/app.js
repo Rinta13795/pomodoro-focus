@@ -1,140 +1,126 @@
 /**
- * 应用入口模块 - 简化版，更稳定
+ * 入口：加载数据、连接后端事件、三页导航（专注中锁定在专注页）。
  */
+import { api } from './api.js';
+import { on, EVENTS } from './events.js';
+import * as store from './store.js';
+import * as focus from './views/focus.js';
+import * as statsView from './views/stats.js';
+import * as settings from './views/settings.js';
+import { playChime, notify } from './feedback.js';
+import { $$, toast, errorText } from './dom.js';
+import { dateKey } from './stats.js';
 
-import API from './api.js';
-import Timer from './timer.js';
-import Settings from './settings.js';
-import { requestNotificationPermission } from './utils.js';
+// 浏览器里直接打开 src/ 调试时，用假数据模拟后端（Tauri 内永远不会加载）
+if (location.protocol.startsWith('http') && !window.__TAURI__) {
+  await import('../dev/mock-tauri.js');
+}
 
-// 当前页面
-let currentPage = 'timer';
-let isInitialized = false;
+let view = 'focus';
+let lastState = 'idle';
 
-// 页面模块映射
-const pages = {
-  timer: Timer,
-  settings: Settings,
-};
+function showView(name) {
+  const status = store.get('status');
+  if (name !== 'focus' && status && status.state !== 'idle') return;
+  view = name;
+  document.body.dataset.view = name;
+  $$('.tab').forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.view === name)));
+  $$('.view').forEach((el) => {
+    el.hidden = el.id !== `view-${name}`;
+  });
+  statsView.setVisible(name === 'stats');
+  if (name === 'settings') settings.onShow();
+  window.scrollTo(0, 0);
+}
 
-/**
- * 应用初始化
- */
+function applyStatus(status) {
+  const state = (status && status.state) || 'idle';
+  document.body.classList.remove('state-idle', 'state-working', 'state-breaking', 'state-paused');
+  document.body.classList.add(`state-${state}`);
+  const locked = state !== 'idle';
+  $$('.tab').forEach((tab) => {
+    tab.disabled = locked && tab.dataset.view !== 'focus';
+    tab.title = tab.disabled ? '专注结束后可查看' : '';
+  });
+  if (locked && view !== 'focus') showView('focus');
+  // 一轮结束（含紧急取消）后后端会改配置里的已用次数、上次时长，重新读取
+  if (state === 'idle' && lastState !== 'idle') store.loadConfig().catch(() => {});
+  lastState = state;
+}
+
+async function connectEvents() {
+  const soundOn = () => (store.get('config') || {}).play_completion_sound !== false;
+  await Promise.all([
+    on(EVENTS.timerUpdate, (status) => store.set('status', status)),
+    on(EVENTS.workComplete, (record) => {
+      if (soundOn()) playChime();
+      notify('番茄专注', '这一个番茄完成了，休息一下吧');
+      if (record && record.id) {
+        store.upsertRecord(record);
+        focus.showReflection(record);
+      }
+    }),
+    on(EVENTS.breakComplete, () => {
+      if (soundOn()) playChime();
+      notify('番茄专注', '休息结束，准备好下一个番茄了吗？');
+    }),
+    on(EVENTS.historyUpdated, () => store.loadHistory()),
+    on(EVENTS.plannerUpdated, (planner) => {
+      if (planner && Array.isArray(planner.tasks)) store.set('planner', planner);
+      else store.loadPlanner();
+    }),
+  ]);
+}
+
+/** 跨过 0 点时让「今天」相关的视图重算 */
+function watchMidnight() {
+  let day = dateKey(new Date());
+  setInterval(() => {
+    const now = dateKey(new Date());
+    if (now !== day) {
+      day = now;
+      store.touch('history');
+      store.touch('planner');
+    }
+  }, 60 * 1000);
+}
+
 async function init() {
-  if (isInitialized) {
-    console.log('应用已初始化，跳过');
-    return;
-  }
+  $$('.tab').forEach((tab) => tab.addEventListener('click', () => showView(tab.dataset.view)));
+  store.subscribe('status', applyStatus);
 
-  console.log('番茄专注 App 初始化中...');
+  focus.init();
+  statsView.init();
+  settings.init();
 
   try {
-    // 初始化导航
-    initNavigation();
-
-    // 初始化默认页面
-    await initPage('timer');
-
-    // 测试后端连接
-    const config = await API.getConfig();
-    console.log('配置加载成功:', config);
-
-    isInitialized = true;
-    console.log('番茄专注 App 初始化完成');
-  } catch (error) {
-    console.error('应用初始化失败:', error);
-    alert('应用初始化失败: ' + error.message);
+    await store.loadConfig();
+  } catch (err) {
+    toast(`读取配置失败：${errorText(err)}`);
   }
-}
+  await Promise.all([
+    store.loadPlatform(),
+    store.loadStatus(),
+    store.loadHistory(),
+    store.loadPlanner(),
+    api.getBackground().then((b64) => store.set('background', b64 || null), () => {}),
+  ]);
 
-/**
- * 初始化导航 - 最简单直接的方式
- */
-function initNavigation() {
-  const timerBtn = document.querySelector('[data-page="timer"]');
-  const settingsBtn = document.querySelector('[data-page="settings"]');
-
-  if (timerBtn) {
-    timerBtn.onclick = (e) => {
-      console.log('[NAV] 计时器按钮被点击');
-      e.preventDefault();
-      switchPage('timer');
-    };
+  try {
+    await connectEvents();
+  } catch (err) {
+    toast(`无法连接后端：${errorText(err)}`);
   }
+  watchMidnight();
 
-  if (settingsBtn) {
-    settingsBtn.onclick = (e) => {
-      console.log('[NAV] 设置按钮被点击');
-      e.preventDefault();
-      switchPage('settings');
-    };
-  }
-
-  console.log('导航初始化完成');
-}
-
-/**
- * 切换页面 - 优化版：UI 切换立即执行，初始化异步进行
- */
-function switchPage(pageName) {
-  // 专注模式下禁止切换到非计时器页面
-  const bodyClass = document.body.className;
-  if (bodyClass && bodyClass !== 'state-idle' && pageName !== 'timer') {
-    console.log('[NAV] 专注模式中，禁止切换页面');
-    return;
-  }
-
-  if (pageName === currentPage) {
-    console.log('[NAV] 已在当前页面:', pageName);
-    return;
-  }
-
-  console.log('[NAV] 切换页面:', currentPage, '->', pageName);
-
-  // 立即更新 UI（同步操作）
-  // 更新导航按钮状态
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    if (btn.dataset.page === pageName) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
+  try {
+    if ('Notification' in window && Notification.permission === 'default') {
+      const pending = Notification.requestPermission();
+      if (pending && pending.catch) pending.catch(() => {});
     }
-  });
-
-  // 更新页面显示
-  document.querySelectorAll('.page').forEach(page => {
-    page.classList.remove('active');
-  });
-
-  const targetPage = document.getElementById(`${pageName}-page`);
-  if (targetPage) {
-    targetPage.classList.add('active');
-  }
-
-  currentPage = pageName;
-  console.log('[NAV] UI 切换完成');
-
-  // 异步初始化页面（不阻塞 UI）
-  initPage(pageName).catch(err => {
-    console.error('[NAV] 页面初始化失败:', err);
-  });
-}
-
-/**
- * 初始化指定页面
- */
-async function initPage(pageName) {
-  const page = pages[pageName];
-  if (page && page.init) {
-    await page.init();
+  } catch {
+    /* WebView 不支持网页通知时忽略 */
   }
 }
 
-// 等待 DOM 加载完成
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
-
-export { init, switchPage };
+init();
