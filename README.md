@@ -1,153 +1,96 @@
 # 🍅 番茄专注 (Pomodoro Focus)
 
-一款 macOS 桌面番茄钟应用，专注期间**强制屏蔽**娱乐网站和应用，帮助你保持专注。
+面向学习的番茄钟桌面应用，支持 **macOS** 和 **Windows**。
 
-> ⚠️ 仅支持 macOS，使用 Tauri 2.0 + Rust + HTML/CSS/JS 构建。
+专注期间，它会屏蔽娱乐网站、关闭黑名单里的 App。它还会记录你每一次专注，让你看见自己的进步：
+- 今日目标
+- 连续天数
+- 一年的专注热力图
+- 按科目统计
 
+> Tauri 2 + Rust + 原生 HTML/CSS/JS，不依赖前端框架，数据只存在本机。
 
-## ✨ 核心功能
+## ✨ 功能
 
-- **番茄计时器** — 自定义专注时长（精确到秒），支持暂停/继续
-- **App 强制拦截** — 专注期间自动终止黑名单应用（如 QQ、微信），被拦截时弹出全屏覆盖层
-- **网站三层屏蔽** — hosts 文件 + pf 防火墙 + 浏览器扩展，三重机制确保无法绕过
-- **Chrome / Edge / Safari 扩展** — 实时拦截黑名单网站，已打开的标签页也会被强制跳转
-- **学霸模式** — 紧急取消每月仅 3 次，专注期间无法轻易退出
-- **专注记忆** — 记住上次使用的专注时长，关闭重开自动恢复专注状态
-- **完成提醒** — 专注结束时播放提示音（可在设置中关闭）
-- **定时模式** — 设定每日自动专注的时间段
+**学习闭环：计划 → 专注 → 复盘 → 看见进步**
 
-## 🏗️ 技术架构
+- **今日计划**：写下今天要做的事，并预估每件事需要几个番茄。开始专注时选一项，完成一个番茄后会自动记 +1。没做完的任务第二天可以一键移到今天。
+- **科目标签**：每个番茄可以标记科目，例如数学、英语、专业课。统计页会显示本周各科目花了多少时间。
+- **今日目标环**：显示今天的专注进度。离目标越近，提示越具体，比如"再专注 35 分钟就达成今日目标"。
+- **一句话复盘**：每个番茄结束后，可以写一句"这个番茄完成了什么"。写过的复盘会出现在记录列表里，之后也能修改。
+- **专注热力图**：像 GitHub 贡献图一样展示最近一年每天的专注时长，鼠标悬停可以看到具体分钟数。
+- **宽容的连续天数**：每 7 天里允许一个休息日，漏一天不会清零。断了也只会提示"欢迎回来"，不会说"你失去了 N 天"。
+- **学霸模式**：专注中只能用"紧急取消"退出，每月次数有限，托盘里的"退出"也不能绕过。
 
-```
-┌─────────────────────────────────────────┐
-│            Tauri 桌面应用                 │
-│  ┌──────────────┐  ┌──────────────────┐ │
-│  │ 前端 HTML/   │◄►│ Rust 后端         │ │
-│  │ CSS/JS       │  │ - 计时器线程      │ │
-│  │              │  │ - App 拦截线程    │ │
-│  └──────────────┘  │ - HTTP 服务器     │ │
-│                    └────────┬─────────┘ │
-└─────────────────────────────┼───────────┘
-                              │ :27190
-               ┌──────────────▼──────────────┐
-               │  Chrome / Safari 浏览器扩展   │
-               │  轮询状态 → 动态拦截网站      │
-               └─────────────────────────────┘
-```
+**防分心**
 
-### 网站屏蔽三层机制
+- **网站屏蔽**：修改系统 hosts 文件，对所有浏览器和应用都生效。另有浏览器扩展（Chrome / Edge / Safari），会实时拦截已经打开的标签页。
+- **App 拦截**：专注期间检测到黑名单里的 App 就自动关闭，并弹出全屏提醒。
+- **断点恢复**：专注中途重启电脑或应用，会自动接着计时。电脑睡眠的时间也会正确补算。
 
-| 层级 | 机制 | 覆盖范围 |
-|------|------|----------|
-| 系统层 | /etc/hosts 重定向 | 所有应用 |
-| 网络层 | pf 防火墙规则 | IP 级别拦截 |
-| 浏览器层 | Chrome/Edge/Safari 扩展 | 实时标签页拦截 |
+为什么这样设计（附研究来源），见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## 📦 安装
 
-### 前置要求
+### 直接下载
 
-- macOS 12+
-- [Rust](https://rustup.rs/) (最新稳定版)
+[GitHub Actions](https://github.com/Rinta13795/pomodoro-focus/actions) 每次构建都会产出两个安装包：
+- macOS：`.dmg`
+- Windows：`.exe`（NSIS 安装包）
+
+在对应构建的 Artifacts 里下载即可。
+
+### 从源码构建
+
+需要：
+- [Rust](https://rustup.rs/)（stable）
 - [Node.js](https://nodejs.org/) 18+
-- Xcode Command Line Tools (`xcode-select --install`)
-
-### 构建运行
+- macOS 还需要 Xcode Command Line Tools：`xcode-select --install`
+- Windows 还需要 [Microsoft C++ 生成工具](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 和 WebView2（Windows 10/11 自带）
 
 ```bash
-# 克隆仓库
 git clone https://github.com/Rinta13795/pomodoro-focus.git
 cd pomodoro-focus
-
-# 安装依赖
 npm install
-
-# 开发模式运行
-cargo tauri dev
-
-# 打包发布
-cargo tauri build
+npm run dev      # 开发模式
+npm run build    # 打包安装程序
+npm test         # 前端与扩展测试
+npm run test:rust
 ```
 
-### 安装浏览器扩展（Chrome / Edge / Safari）
+### 浏览器扩展（推荐）
 
-三个浏览器共用 `extension/` 一份代码，详细步骤见 [extension/README.md](extension/README.md)：
+见 [extension/README.md](extension/README.md)，支持 Chrome、Edge、Safari。
 
-- **Chrome**：`chrome://extensions/` → 开发者模式 → 加载已解压的扩展程序 → 选择 `extension/`
-- **Edge**：`edge://extensions/` → 开发人员模式 → 加载解压缩的扩展 → 选择 `extension/`
-- **Safari**：`node scripts/sync-extension.mjs` → Xcode 打开 `safari-extension/番茄专注/番茄专注.xcodeproj` 编译运行 → Safari 设置 → 扩展 → 启用「番茄专注」
+## 🖥️ macOS 与 Windows 的区别
 
-## 📁 项目结构
+| | macOS | Windows |
+|---|---|---|
+| 网站屏蔽授权 | 每次开始专注，输入一次管理员密码 | 每次开始专注，确认一次 UAC |
+| App 黑名单 | 从"应用程序"文件夹里选择 | 从开始菜单里选择，也可以直接输入 exe 名（如 `WeChat`） |
+| 浏览器扩展 | Chrome / Safari | Chrome / Edge |
+| 数据目录 | `~/Library/Application Support/pomodoro-focus/` | `%APPDATA%\pomodoro-focus\` |
+
+> **Windows 用户注意：**
+> - 部分杀毒软件会把"修改 hosts"当成可疑行为，需要允许本应用。
+> - 如果不想让应用修改 hosts，可以把网站黑名单留空，只用浏览器扩展。
+
+## 🏗️ 项目结构
 
 ```
-pomodoro-focus/
-├── src/                        # 前端
-│   ├── index.html              # 主窗口
-│   ├── overlay.html            # 全屏覆盖层（拦截 App 时显示）
-│   ├── js/
-│   │   ├── app.js              # 页面导航
-│   │   ├── timer.js            # 计时器逻辑
-│   │   ├── settings.js         # 设置页逻辑
-│   │   ├── api.js              # Tauri IPC 封装
-│   │   └── utils.js            # 工具函数
-│   └── styles/
-│       ├── main.css            # 全局样式
-│       ├── timer.css           # 计时器样式
-│       └── settings.css        # 设置页样式
-├── src-tauri/                  # Rust 后端
-│   └── src/
-│       ├── lib.rs              # 应用初始化
-│       ├── state.rs            # 全局状态管理
-│       ├── commands/
-│       │   ├── timer.rs        # 计时器命令
-│       │   ├── blocker.rs      # 拦截命令
-│       │   ├── config.rs       # 配置命令
-│       │   └── apps.rs         # 应用扫描
-│       ├── services/
-│       │   ├── site_blocker.rs # 网站屏蔽
-│       │   ├── app_blocker.rs  # App 拦截
-│       │   ├── scheduler.rs    # 定时调度
-│       │   └── local_server.rs # HTTP 服务器
-│       └── models/
-│           ├── config.rs       # 配置数据结构
-│           └── timer.rs        # 计时器数据结构
-├── extension/                  # 浏览器扩展（Chrome / Edge / Safari 共用，MV3）
-│   ├── manifest.json
-│   ├── background.js
-│   └── blocked.html
-├── scripts/sync-extension.mjs  # 把 extension/ 同步进 Safari Xcode 项目
-├── tests/                      # Node 测试（npm test，即 node --test）
-└── safari-extension/           # Safari 扩展 Xcode 项目（资源由同步脚本生成）
+src/                 前端（原生 ES Modules）
+  js/views/          专注页、统计页、设置页、今日计划
+  js/stats.js        统计纯函数：按天汇总、连续天数、热力图分级（有单元测试）
+src-tauri/src/
+  services/focus.rs  计时引擎：开始/暂停/结束、断点恢复、写专注记录
+  platform/          所有系统相关代码（macos.rs / windows.rs）
+  models/            配置、专注记录、今日计划、会话
+extension/           浏览器扩展（Chrome / Edge / Safari 共用）
+safari-extension/    Safari 扩展的 Xcode 工程（资源由 scripts/sync-extension.mjs 同步）
+docs/                接口约定 API.md、设计说明 DESIGN.md
+tests/               Node 单元测试
 ```
 
-## ⚙️ 配置
+## License
 
-配置文件位于 `~/Library/Application Support/pomodoro-focus/config.json`
-
-可配置项：
-- 工作/休息时长
-- App 黑名单（自动扫描已安装应用）
-- 网站黑名单
-- 紧急取消月度限额
-- 定时模式时间段
-- 完成提醒音开关
-
-## 🚧 已知限制
-
-- **仅支持 macOS** — 依赖 osascript、pfctl、/etc/hosts 等系统特性
-- **需要管理员权限** — 网站屏蔽需要修改 hosts 文件和 pf 防火墙
-- **Safari 开发版扩展** — 每次重启 Mac 可能需要重新在 Safari 设置中启用
-- **HTTP 端口固定** — 本地服务器端口 27190 硬编码
-
-## 📋 开发计划
-
-- [ ] UI 美化（自定义背景图、主题切换）
-- [ ] 自定义提醒铃声
-- [ ] 性能优化（App 拦截轮询频率）
-- [ ] 专注数据统计
-- [ ] Firefox 扩展
-- [ ] 关闭 App 后保持屏蔽至专注结束
-
-## 📄 License
-
-MIT License
+MIT
