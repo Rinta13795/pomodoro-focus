@@ -191,24 +191,9 @@
           <input class="field" id="site-input" placeholder="输入域名，如 bilibili.com" aria-label="网站域名">
           <button class="btn" type="submit">添加</button>
         </form>
-        <p class="hint" data-platform="macos">开始专注时会修改 /etc/hosts 并启用防火墙规则，需要输入一次管理员密码。配合 Chrome 或 Safari 扩展，已打开的标签页也会被拦截。</p>
+        <p class="hint" data-platform="macos">开始专注时会修改 /etc/hosts，需要输入一次管理员密码。配合 Chrome 或 Safari 扩展，已打开的标签页也会被拦截。</p>
         <p class="hint" data-platform="windows" hidden>开始专注时会修改 hosts 文件，系统会弹出管理员权限（UAC）确认。推荐同时安装 Chrome / Edge 扩展：拦截更及时，已打开的标签页也会被拦截。</p>
         <p class="hint" data-platform="linux" hidden>开始专注时会修改 /etc/hosts，需要管理员权限。推荐同时安装 Chrome 扩展。</p>
-      </div>
-
-      <div class="block">
-        <h2 class="block-label"><span class="cn">定时计划</span><span class="en">Schedule</span></h2>
-        <ul class="rows" id="schedule-list"></ul>
-        <button class="btn spaced" id="btn-add-schedule" type="button">添加时间段</button>
-      </div>
-
-      <div class="block">
-        <h2 class="block-label"><span class="cn">工作模式</span><span class="en">Mode</span></h2>
-        <div class="setting setting--inline">
-          <span>定时模式</span>
-          <label class="switch"><input type="checkbox" id="mode-toggle" aria-label="定时模式"><span></span></label>
-        </div>
-        <p class="hint" id="mode-desc"></p>
       </div>
 
       <p class="footer"><span class="mark">■</span> 配置文件 <span id="config-path"></span></p>

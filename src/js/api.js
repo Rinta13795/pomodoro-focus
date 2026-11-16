@@ -5,6 +5,20 @@
 
 let ready = null;
 
+/**
+ * 只有在本机浏览器里直接打开 src/ 调试时才加载假后端。
+ * Tauri v2 在 Windows 上的页面地址是 http://tauri.localhost，所以不能只看协议；
+ * 同时要求没有 Tauri 注入的 __TAURI_INTERNALS__（它先于页面脚本注入，不受 withGlobalTauri 影响）。
+ */
+export function shouldUseBrowserMock() {
+  return (
+    (location.protocol === 'http:' || location.protocol === 'https:') &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) &&
+    !('__TAURI_INTERNALS__' in window) &&
+    !window.__TAURI__
+  );
+}
+
 /** 等待 withGlobalTauri 注入的 window.__TAURI__（最多 5 秒） */
 export function tauriReady(timeoutMs = 5000) {
   if (!ready) {

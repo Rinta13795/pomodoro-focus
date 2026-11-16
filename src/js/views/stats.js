@@ -164,7 +164,7 @@ function noteEditor(record, li) {
     const note = input.value.trim();
     if (save && note !== (record.note || '')) {
       try {
-        await store.setRecordNote(record.id, note);
+        await store.setRecordNote(record.id, note || null);
         return; // history 更新会重绘
       } catch (err) {
         toast(`保存失败：${errorText(err)}`);

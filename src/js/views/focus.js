@@ -64,7 +64,9 @@ function renderToday() {
 
   const { current, todayCounts } = summary.streak;
   const streakTag = $('#streak-tag');
-  streakTag.textContent = current > 0 ? `连续 ${current} 天` : '开始新的连续';
+  // 中断后不提「失去了 N 天」，只说欢迎回来（见 docs/DESIGN.md）
+  const hasHistory = (store.get('history') || []).length > 0;
+  streakTag.textContent = current > 0 ? `连续 ${current} 天` : hasHistory ? '欢迎回来' : '开始第一天';
   $('#today-pomos').textContent = `${summary.todayTotal.pomodoros} 个番茄`;
 
   let msg = goalMessage(seconds, goal);
@@ -274,11 +276,15 @@ export function showReflection(record) {
   const meta = [record.label, formatMinutes(record.focused_seconds), `${hhmm(record.started_at)}—${hhmm(record.ended_at)}`]
     .filter(Boolean)
     .join(' · ');
+  // 后端先发 planner-updated 再发 timer-work-complete，这里读到的已是 +1 之后的进度
+  const task = record.task_id ? (store.get('planner').tasks || []).find((t) => t.id === record.task_id) : null;
+  const progress = task ? `${task.title} 已完成 ${task.done_pomodoros || 0}/${task.estimate}` : null;
 
   slot.replaceChildren(h('div', { class: 'card reflection' },
     h('button', { class: 'link card-close', type: 'button', onclick: close }, '关闭'),
     h('p', { class: 'reflection-title' }, '这一个番茄完成了什么？'),
     h('p', { class: 'meta' }, meta),
+    progress ? h('p', { class: 'meta' }, progress) : null,
     form,
     h('p', { class: 'reflection-cheer' }, cheer),
   ));

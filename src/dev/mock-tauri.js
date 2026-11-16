@@ -1,6 +1,6 @@
 /**
  * 开发用：在普通浏览器里模拟 window.__TAURI__，生成约 300 天假历史、计划和配置。
- * 只会在 location.protocol 为 http(s) 且没有 window.__TAURI__ 时被 app.js / overlay.js 动态加载。
+ * 只会在本机地址（localhost / 127.0.0.1）打开、且没有 Tauri 注入时被 app.js / overlay.js 动态加载（见 api.js 的 shouldUseBrowserMock）。
  *
  * URL 参数：
  *   ?platform=windows   模拟 Windows（get_platform）
@@ -44,11 +44,6 @@ const config = {
   },
   blocked_apps: ['bilibili', 'QQ', 'WeChat', 'Steam'],
   blocked_sites: ['bilibili.com', 'www.bilibili.com', 'douyin.com', 'weibo.com'],
-  schedules: [
-    { enabled: true, start: '09:00', end: '12:00' },
-    { enabled: false, start: '19:00', end: '22:00' },
-  ],
-  mode: 'manual',
   play_completion_sound: true,
   custom_bg_path: null,
   daily_goal_minutes: 120,

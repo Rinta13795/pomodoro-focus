@@ -1,7 +1,7 @@
 /**
  * 入口：加载数据、连接后端事件、三页导航（专注中锁定在专注页）。
  */
-import { api } from './api.js';
+import { api, shouldUseBrowserMock } from './api.js';
 import { on, EVENTS } from './events.js';
 import * as store from './store.js';
 import * as focus from './views/focus.js';
@@ -81,8 +81,8 @@ function watchMidnight() {
 }
 
 async function init() {
-  // 浏览器里直接打开 src/ 调试时，用假数据模拟后端（Tauri 内永远不会加载）
-  if (location.protocol.startsWith('http') && !window.__TAURI__) {
+  // 浏览器里直接打开 src/ 调试时，用假数据模拟后端（条件见 shouldUseBrowserMock）
+  if (shouldUseBrowserMock()) {
     await import('../dev/mock-tauri.js');
   }
   $$('.tab').forEach((tab) => tab.addEventListener('click', () => showView(tab.dataset.view)));

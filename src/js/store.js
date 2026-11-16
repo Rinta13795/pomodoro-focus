@@ -1,6 +1,8 @@
 /**
  * 全局状态：配置、计时状态、历史记录、今日计划、平台。
  * 视图通过 subscribe() 订阅；后端未就绪（命令报错）时退回空数据，不让界面崩溃。
+ * 退回的空数据只用于显示：configError / plannerError 为真时拒绝保存，
+ * 免得把磁盘上的真实黑名单、计划覆盖成空。
  */
 import { api } from './api.js';
 
@@ -9,6 +11,7 @@ export const DEFAULT_GOAL_MINUTES = 120;
 
 const state = {
   config: null,
+  configError: false,
   status: null,
   history: [],
   historyError: false,
@@ -59,8 +62,6 @@ export function withDefaults(config) {
   };
   c.blocked_apps = Array.isArray(c.blocked_apps) ? c.blocked_apps : [];
   c.blocked_sites = Array.isArray(c.blocked_sites) ? c.blocked_sites : [];
-  c.schedules = Array.isArray(c.schedules) ? c.schedules : [];
-  c.mode = c.mode || 'manual';
   if (c.play_completion_sound === undefined) c.play_completion_sound = true;
   const goal = Number(c.daily_goal_minutes);
   c.daily_goal_minutes = Number.isFinite(goal) && goal > 0 ? goal : DEFAULT_GOAL_MINUTES;
@@ -70,15 +71,27 @@ export function withDefaults(config) {
 
 export async function loadConfig() {
   try {
-    set('config', withDefaults(await api.getConfig()));
+    const config = withDefaults(await api.getConfig());
+    state.configError = false;
+    set('config', config);
   } catch (err) {
-    set('config', withDefaults(null));
+    // 之前读到过真实配置就继续用它；从没读到过才退回默认值，并禁止保存
+    if (!state.config || state.configError) {
+      state.configError = true;
+      set('config', withDefaults(null));
+    }
     throw err;
   }
 }
 
 /** 先更新本地再保存；失败时抛出，由调用方提示 */
 export async function saveConfig(next) {
+  if (state.configError) {
+    // 当前显示的是默认值，直接保存会覆盖磁盘上的真实配置：先重读一次，让用户在真实配置上重做
+    const recovered = await loadConfig().then(() => true, () => false);
+    if (!recovered) touch('config'); // 把控件恢复成当前显示的值
+    throw new Error(recovered ? '已重新读取配置，请再操作一次' : '配置读取失败，为避免覆盖已有设置，暂不保存');
+  }
   const config = withDefaults(next);
   set('config', config);
   await api.saveConfig(config);
@@ -139,6 +152,11 @@ export async function loadPlanner() {
 
 /** 先更新本地再保存；失败时抛出，由调用方提示 */
 export async function savePlanner(planner) {
+  if (state.plannerError) {
+    // 本地只有空计划，保存会覆盖 planner.json：先重读，让用户在真实计划上重做
+    await loadPlanner();
+    throw new Error(state.plannerError ? '计划读取失败，为避免覆盖已有计划，暂不保存' : '已重新读取计划，请再操作一次');
+  }
   set('planner', planner);
   await api.savePlanner(planner);
 }

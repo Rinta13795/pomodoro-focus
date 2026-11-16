@@ -1,5 +1,5 @@
 /**
- * 设置页：计时参数、每日目标、科目标签、背景图、App/网站黑名单、定时计划、工作模式。
+ * 设置页：计时参数、每日目标、科目标签、背景图、App/网站黑名单。
  * 所有修改即时保存。
  */
 import { api, pickImageFile } from '../api.js';
@@ -55,10 +55,6 @@ function renderRanges(c) {
     $(`#${r.id}-value`).textContent = r.fmt(Number(input.value));
   });
   $('#sound-toggle').checked = c.play_completion_sound !== false;
-  $('#mode-toggle').checked = c.mode === 'scheduled';
-  $('#mode-desc').textContent = c.mode === 'scheduled'
-    ? '定时模式：在下方定时计划的时间段内自动开始专注。'
-    : '手动模式：在专注页点击「开始专注」后开始。';
 }
 
 /* ---------------- 列表 ---------------- */
@@ -107,26 +103,6 @@ function renderSites(c) {
   )));
 }
 
-function renderSchedules(c) {
-  const list = $('#schedule-list');
-  if (!c.schedules.length) {
-    list.replaceChildren(h('li', { class: 'empty' }, '暂无定时计划。'));
-    return;
-  }
-  const patch = (i, value) =>
-    save({ schedules: config().schedules.map((s, j) => (j === i ? { ...s, ...value } : s)) });
-  list.replaceChildren(...c.schedules.map((s, i) => h('li', { class: 'row' },
-    h('label', { class: 'switch' },
-      h('input', { type: 'checkbox', checked: !!s.enabled, 'aria-label': '启用该时间段', onchange: (e) => patch(i, { enabled: e.target.checked }) }),
-      h('span')),
-    h('span', { class: 'row-name' },
-      h('input', { class: 'field', type: 'time', value: s.start, 'aria-label': '开始时间', onchange: (e) => patch(i, { start: e.target.value }) }),
-      h('span', { class: 'meta' }, ' 至 '),
-      h('input', { class: 'field', type: 'time', value: s.end, 'aria-label': '结束时间', onchange: (e) => patch(i, { end: e.target.value }) })),
-    removeButton('移除该时间段', () => save({ schedules: config().schedules.filter((_, j) => j !== i) })),
-  )));
-}
-
 function render() {
   const c = config();
   if (!c) return;
@@ -134,7 +110,6 @@ function render() {
   renderLabels(c);
   renderApps(c);
   renderSites(c);
-  renderSchedules(c);
 }
 
 /* ---------------- App 搜索补全 ---------------- */
@@ -264,7 +239,6 @@ export function init() {
     input.addEventListener('change', () => r.save(Number(input.value)));
   });
   $('#sound-toggle').addEventListener('change', (e) => save({ play_completion_sound: e.target.checked }));
-  $('#mode-toggle').addEventListener('change', (e) => save({ mode: e.target.checked ? 'scheduled' : 'manual' }));
 
   $('#label-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -299,9 +273,6 @@ export function init() {
     input.value = '';
     save({ blocked_sites: [...config().blocked_sites, site] });
   });
-
-  $('#btn-add-schedule').addEventListener('click', () =>
-    save({ schedules: [...config().schedules, { enabled: true, start: '09:00', end: '12:00' }] }));
 
   $('#btn-choose-bg').addEventListener('click', chooseBackground);
   $('#btn-clear-bg').addEventListener('click', clearBackground);

@@ -4,7 +4,7 @@
  */
 import * as store from '../store.js';
 import { dateKey, parseKey } from '../stats.js';
-import { $, h, toast, prefs } from '../dom.js';
+import { $, h, toast, prefs, errorText } from '../dom.js';
 
 const TARGET_KEY = 'focus.targetTask';
 const MAX_ESTIMATE = 8;
@@ -21,11 +21,15 @@ function tasks() {
   return store.get('planner').tasks || [];
 }
 
+/** 保存成功返回 true；失败时提示并重新读取，让界面回到后端的真实计划 */
 async function commit(nextTasks) {
   try {
     await store.savePlanner({ ...store.get('planner'), tasks: nextTasks });
-  } catch {
-    toast('计划未能保存，稍后会重试');
+    return true;
+  } catch (err) {
+    toast(`计划未能保存：${errorText(err)}`);
+    if (!store.get('plannerError')) store.loadPlanner();
+    return false;
   }
 }
 
@@ -117,7 +121,7 @@ export function render() {
   list.replaceChildren(...todays.map((x) => taskRow(x)));
   if (!todays.length) {
     list.append(h('li', { class: 'empty' },
-      store.get('plannerError') ? '计划暂时无法读取，新加的任务会在本次运行中保留。' : '写下今天第一件要做的事，越具体越容易开始。'));
+      store.get('plannerError') ? '计划暂时无法读取，请稍后再试。' : '写下今天第一件要做的事，越具体越容易开始。'));
   }
 
   const planned = todays.reduce((s, x) => s + (x.estimate || 0), 0);
@@ -138,7 +142,7 @@ export function init({ onTarget } = {}) {
     select.append(h('option', { value: String(i) }, `${i} 个番茄`));
   }
 
-  $('#plan-form').addEventListener('submit', (e) => {
+  $('#plan-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const input = $('#plan-title');
     const title = input.value.trim();
@@ -155,10 +159,10 @@ export function init({ onTarget } = {}) {
       created_at: Math.floor(Date.now() / 1000),
       date: today(),
     };
+    const first = !getTarget();
+    if (!(await commit([...tasks(), task]))) return; // 没保存上就保留输入，方便重试
     input.value = '';
     select.value = '1';
-    const first = !getTarget();
-    commit([...tasks(), task]);
     if (first) setTarget(task.id);
   });
 

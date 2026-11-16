@@ -1,14 +1,9 @@
 /**
- * 小型 DOM 工具：查询、建元素、转义、提示、确认弹窗、首字母头像。
+ * 小型 DOM 工具：查询、建元素、提示、确认弹窗、首字母头像。
  */
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-
-const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (c) => ESCAPES[c]);
-}
 
 /**
  * h('button', { class: 'btn', onclick, dataset: { id } }, '文本', child)
