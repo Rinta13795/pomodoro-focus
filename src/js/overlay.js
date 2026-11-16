@@ -6,10 +6,6 @@ import { api } from './api.js';
 import { on, EVENTS } from './events.js';
 import { $, confirmDialog, toast, errorText } from './dom.js';
 
-if (location.protocol.startsWith('http') && !window.__TAURI__) {
-  await import('../dev/mock-tauri.js');
-}
-
 let closing = false;
 let pollId = null;
 let remaining = 0;
@@ -48,6 +44,10 @@ async function refresh() {
 }
 
 async function init() {
+  // 浏览器里调试时用假后端（Tauri 内永远不会加载）
+  if (location.protocol.startsWith('http') && !window.__TAURI__) {
+    await import('../dev/mock-tauri.js');
+  }
   $('#btn-back').addEventListener('click', () => api.hideOverlayWindow().catch((err) => toast(errorText(err))));
   $('#btn-emergency').addEventListener('click', async () => {
     if (remaining <= 0) return;

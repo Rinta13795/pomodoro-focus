@@ -11,11 +11,6 @@ import { playChime, notify } from './feedback.js';
 import { $$, toast, errorText } from './dom.js';
 import { dateKey } from './stats.js';
 
-// 浏览器里直接打开 src/ 调试时，用假数据模拟后端（Tauri 内永远不会加载）
-if (location.protocol.startsWith('http') && !window.__TAURI__) {
-  await import('../dev/mock-tauri.js');
-}
-
 let view = 'focus';
 let lastState = 'idle';
 
@@ -86,6 +81,10 @@ function watchMidnight() {
 }
 
 async function init() {
+  // 浏览器里直接打开 src/ 调试时，用假数据模拟后端（Tauri 内永远不会加载）
+  if (location.protocol.startsWith('http') && !window.__TAURI__) {
+    await import('../dev/mock-tauri.js');
+  }
   $$('.tab').forEach((tab) => tab.addEventListener('click', () => showView(tab.dataset.view)));
   store.subscribe('status', applyStatus);
 
