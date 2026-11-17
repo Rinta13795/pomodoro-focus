@@ -1,33 +1,35 @@
 use chrono::Local;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
 
 use crate::errors::AppError;
+use crate::storage;
+
+const CONFIG_FILE: &str = "config.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub pomodoro: PomodoroConfig,
     pub blocked_apps: Vec<String>,
     pub blocked_sites: Vec<String>,
-    pub schedules: Vec<Schedule>,
-    pub mode: String,
-    #[serde(default = "default_play_completion_sound")]
+    #[serde(default = "default_true")]
     pub play_completion_sound: bool,
     #[serde(default)]
     pub custom_bg_path: Option<String>,
-}
-
-fn default_play_completion_sound() -> bool {
-    true
+    /// 每日专注目标（分钟）
+    #[serde(default = "default_daily_goal")]
+    pub daily_goal_minutes: u32,
+    /// 科目 / 标签
+    #[serde(default = "default_labels")]
+    pub labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PomodoroConfig {
     pub work_minutes: u32,
     pub break_minutes: u32,
+    /// 每月允许的紧急取消次数
     pub emergency_cancel_limit: u32,
-    #[serde(default = "default_last_focus_duration")]
+    #[serde(default = "default_work_minutes")]
     pub last_focus_duration: u32,
     #[serde(default)]
     pub emergency_used_count: u32,
@@ -35,32 +37,51 @@ pub struct PomodoroConfig {
     pub emergency_reset_month: String,
 }
 
-fn default_last_focus_duration() -> u32 {
+fn default_true() -> bool {
+    true
+}
+fn default_work_minutes() -> u32 {
     25
+}
+fn default_daily_goal() -> u32 {
+    120
+}
+fn default_labels() -> Vec<String> {
+    ["数学", "英语", "专业课", "编程", "阅读"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 impl PomodoroConfig {
-    /// 获取当月剩余紧急取消次数
-    pub fn get_monthly_emergency_remaining(&mut self) -> u32 {
-        let current_month = Local::now().format("%Y-%m").to_string();
-
-        // 月份不同，重置计数
-        if self.emergency_reset_month != current_month {
+    /// 当月剩余紧急取消次数（跨月自动重置）。
+    pub fn monthly_emergency_remaining(&mut self) -> u32 {
+        let month = Local::now().format("%Y-%m").to_string();
+        if self.emergency_reset_month != month {
             self.emergency_used_count = 0;
-            self.emergency_reset_month = current_month;
+            self.emergency_reset_month = month;
         }
-
         self.emergency_cancel_limit
             .saturating_sub(self.emergency_used_count)
     }
+
+    pub fn record_emergency_use(&mut self) {
+        self.monthly_emergency_remaining();
+        self.emergency_used_count += 1;
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Schedule {
-    pub enabled: bool,
-    pub start: String,
-    pub end: String,
-}
+const DEFAULT_SITES: &[&str] = &[
+    "bilibili.com",
+    "douyin.com",
+    "pornhub.com",
+    "xvideos.com",
+    "xhamster.com",
+    "xnxx.com",
+    "91porn.com",
+    "javdb.com",
+    "missav.com",
+];
 
 impl Default for Config {
     fn default() -> Self {
@@ -73,136 +94,41 @@ impl Default for Config {
                 emergency_used_count: 0,
                 emergency_reset_month: String::new(),
             },
-            blocked_apps: vec![
-                "bilibili".to_string(),
-                "QQ".to_string(),
-            ],
-            blocked_sites: vec![
-                "bilibili.com".to_string(),
-                "www.bilibili.com".to_string(),
-                "m.bilibili.com".to_string(),
-                "douyin.com".to_string(),
-                "www.douyin.com".to_string(),
-                "pornhub.com".to_string(),
-                "www.pornhub.com".to_string(),
-                "xvideos.com".to_string(),
-                "www.xvideos.com".to_string(),
-                "xhamster.com".to_string(),
-                "www.xhamster.com".to_string(),
-                "xnxx.com".to_string(),
-                "www.xnxx.com".to_string(),
-                "91porn.com".to_string(),
-                "www.91porn.com".to_string(),
-                "javdb.com".to_string(),
-                "www.javdb.com".to_string(),
-                "missav.com".to_string(),
-                "www.missav.com".to_string(),
-            ],
-            schedules: vec![
-                Schedule {
-                    enabled: true,
-                    start: "09:00".to_string(),
-                    end: "12:00".to_string(),
-                },
-                Schedule {
-                    enabled: true,
-                    start: "14:00".to_string(),
-                    end: "17:00".to_string(),
-                },
-                Schedule {
-                    enabled: false,
-                    start: "19:00".to_string(),
-                    end: "22:00".to_string(),
-                },
-            ],
-            mode: "manual".to_string(),
+            blocked_apps: vec!["bilibili".to_string(), "QQ".to_string()],
+            // 屏蔽时会自动补全 www. 变体
+            blocked_sites: DEFAULT_SITES.iter().map(|s| s.to_string()).collect(),
             play_completion_sound: true,
             custom_bg_path: None,
+            daily_goal_minutes: default_daily_goal(),
+            labels: default_labels(),
         }
     }
 }
 
 impl Config {
-    pub fn config_dir() -> Result<PathBuf, AppError> {
-        let home = dirs::home_dir()
-            .ok_or_else(|| AppError::ConfigError("无法获取用户目录".to_string()))?;
-        let config_dir = home
-            .join("Library")
-            .join("Application Support")
-            .join("pomodoro-focus");
-        Ok(config_dir)
+    pub fn path() -> Result<std::path::PathBuf, AppError> {
+        storage::data_file(CONFIG_FILE)
     }
 
-    pub fn config_path() -> Result<PathBuf, AppError> {
-        Ok(Self::config_dir()?.join("config.json"))
-    }
-
+    /// 读取配置；文件不存在时写入默认配置；文件损坏时先备份为 config.json.bad 再用默认配置。
     pub fn load() -> Result<Self, AppError> {
-        let config_path = Self::config_path()?;
-
-        if !config_path.exists() {
-            let config = Config::default();
-            config.save()?;
-            return Ok(config);
+        match storage::read_json::<Config>(CONFIG_FILE) {
+            Ok(Some(c)) => Ok(c),
+            Ok(None) => {
+                let c = Config::default();
+                c.save()?;
+                Ok(c)
+            }
+            Err(e) => {
+                let path = Self::path()?;
+                let _ = std::fs::copy(&path, path.with_extension("json.bad"));
+                log::error!("配置文件损坏，已备份为 config.json.bad: {}", e);
+                Err(e)
+            }
         }
-
-        let content = fs::read_to_string(&config_path)?;
-        let config: Config = serde_json::from_str(&content)?;
-        Ok(config)
     }
 
     pub fn save(&self) -> Result<(), AppError> {
-        let config_dir = Self::config_dir()?;
-        if !config_dir.exists() {
-            fs::create_dir_all(&config_dir)?;
-        }
-
-        let config_path = Self::config_path()?;
-        let content = serde_json::to_string_pretty(self)?;
-        fs::write(&config_path, content)?;
-        Ok(())
-    }
-}
-
-/// 专注会话持久化，用于应用重启后恢复计时
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FocusSession {
-    pub state: String,              // "working" 或 "breaking"
-    pub work_end_time: u64,         // 工作阶段结束的 Unix 时间戳（秒）
-    pub break_end_time: u64,        // 休息阶段结束的 Unix 时间戳（秒）
-    pub work_minutes: u32,
-    pub break_minutes: u32,
-    pub emergency_remaining: u32,
-}
-
-impl FocusSession {
-    pub fn session_path() -> Result<PathBuf, AppError> {
-        Ok(Config::config_dir()?.join("session.json"))
-    }
-
-    pub fn save(&self) -> Result<(), AppError> {
-        let path = Self::session_path()?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let content = serde_json::to_string_pretty(self)?;
-        fs::write(&path, content)?;
-        Ok(())
-    }
-
-    pub fn load() -> Result<Option<Self>, AppError> {
-        let path = Self::session_path()?;
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content = fs::read_to_string(&path)?;
-        let session: FocusSession = serde_json::from_str(&content)?;
-        Ok(Some(session))
-    }
-
-    pub fn delete() {
-        if let Ok(path) = Self::session_path() {
-            let _ = fs::remove_file(path);
-        }
+        storage::write_json(CONFIG_FILE, self)
     }
 }

@@ -1,312 +1,119 @@
-use crate::commands::apps::resolve_executable_name;
-use crate::errors::AppError;
+//! App 拦截：专注期间每 3 秒扫描一次进程，结束黑名单应用并弹出全屏提醒。
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
-const POLL_INTERVAL_SECS: u64 = 3;
+use crate::platform;
+
+const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const MAX_KILL_ATTEMPTS: u32 = 3;
 
-// 系统保护列表：绝对不拦截的进程前缀
-const SYSTEM_PROTECTED_PREFIXES: &[&str] = &[
-    "com.apple.",           // 所有 Apple 系统进程
-    "kernel",               // 内核
-    "launchd",              // 系统启动守护进程
-    "systemd",              // 系统服务
-    "pomodoro-focus",       // 本应用自身
-    "pomodoro_focus",       // 本应用自身（下划线形式）
-    "finder",               // Finder
-    "windowserver",         // 窗口服务器
-    "activitymonitor",      // 活动监视器
-];
+/// 子进程后缀（浏览器内核的 helper 等），不单独拦截。
+const SUBPROCESS_SUFFIXES: &[&str] = &["helper", "renderer", "gpu", "utility", "plugin", "crashpad_handler"];
 
-pub struct AppBlocker {
-    blocked_apps: Vec<String>,
+fn is_protected(process: &str) -> bool {
+    platform::PROTECTED_PROCESS_PREFIXES
+        .iter()
+        .any(|p| process.starts_with(p))
 }
 
-impl AppBlocker {
-    pub fn new(blocked_apps: Vec<String>) -> Self {
-        AppBlocker { blocked_apps }
+/// process 为已统一（小写、无 .exe）的进程名。
+pub fn matches(process: &str, candidates: &[String]) -> bool {
+    if SUBPROCESS_SUFFIXES
+        .iter()
+        .any(|s| process.ends_with(&format!(" {s}")) || process.ends_with(&format!("_{s}")) || process.ends_with(&format!("-{s}")))
+    {
+        return false;
     }
+    candidates
+        .iter()
+        .any(|c| process == c || (c.chars().count() >= 3 && process.contains(c.as_str())))
+}
 
-    pub fn update_blocked_apps(&mut self, apps: Vec<String>) {
-        self.blocked_apps = apps;
-    }
-
-    pub fn get_blocked_apps(&self) -> &Vec<String> {
-        &self.blocked_apps
-    }
-
-    /// 启动后台轮询线程
-    pub fn start_polling(
-        blocked_apps: Vec<String>,
-        running_flag: Arc<AtomicBool>,
-        app_handle: AppHandle,
-        overlay_suppressed: Arc<AtomicBool>,
-    ) -> thread::JoinHandle<()> {
-        // 为每个 blocked app 解析真实可执行文件名，构建候选名列表
-        let match_entries: Vec<(String, Vec<String>)> = blocked_apps
+pub fn start_polling(
+    blocked_apps: Vec<String>,
+    stop_signal: Arc<AtomicBool>,
+    app: AppHandle,
+    overlay_suppressed: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        // 解析进程名可能读文件，放在线程里做，不占用调用方的锁
+        let entries: Vec<(String, Vec<String>)> = blocked_apps
             .iter()
-            .map(|app| {
-                let mut names = vec![app.to_lowercase()];
-                if let Some(exec) = resolve_executable_name(app) {
-                    let exec_lower = exec.to_lowercase();
-                    if !names.contains(&exec_lower) {
-                        println!("[AppBlocker] {} -> 可执行文件: {}", app, exec);
-                        names.push(exec_lower);
-                    }
-                }
-                (app.clone(), names)
-            })
+            .map(|a| (a.clone(), platform::process_name_candidates(a)))
             .collect();
-
-        thread::spawn(move || {
-            println!("App 拦截轮询线程已启动");
-            let mut system = System::new();
+        let mut system = System::new();
+        let mut failed: HashMap<Pid, u32> = HashMap::new();
+        while !stop_signal.load(Ordering::SeqCst) {
             system.refresh_processes(ProcessesToUpdate::All, true);
-            let mut failed_pids: HashMap<Pid, u32> = HashMap::new();
-
-            while running_flag.load(Ordering::SeqCst) {
-                system.refresh_processes(ProcessesToUpdate::All, true);
-
-                let killed = Self::check_and_kill_processes(
-                    &mut system,
-                    &match_entries,
-                    &mut failed_pids,
-                    &app_handle,
-                    &overlay_suppressed,
-                );
-                if !killed.is_empty() {
-                    println!("已关闭黑名单应用: {:?}", killed);
-                }
-
-                thread::sleep(Duration::from_secs(POLL_INTERVAL_SECS));
-            }
-
-            println!("App 拦截轮询线程已停止");
-        })
-    }
-
-    /// 检查并关闭黑名单进程
-    fn check_and_kill_processes(
-        system: &mut System,
-        match_entries: &[(String, Vec<String>)],
-        failed_pids: &mut HashMap<Pid, u32>,
-        app_handle: &AppHandle,
-        overlay_suppressed: &AtomicBool,
-    ) -> Vec<String> {
-        let mut killed = Vec::new();
-
-        for (pid, process) in system.processes() {
-            let process_name = process.name().to_string_lossy().to_lowercase();
-
-            // 检查是否为系统保护进程
-            if Self::is_system_protected(&process_name) {
-                continue;
-            }
-
-            // 检查是否匹配任一黑名单 app 的候选进程名
-            for (display_name, candidate_names) in match_entries {
-                if !Self::is_blocked_process(&process_name, candidate_names) {
+            for (pid, process) in system.processes() {
+                let name = platform::normalize_process_name(&process.name().to_string_lossy());
+                if is_protected(&name) {
                     continue;
                 }
-
-                // 检查是否已达到最大重试次数
-                let attempts = failed_pids.get(pid).copied().unwrap_or(0);
+                let Some((display, _)) = entries.iter().find(|(_, c)| matches(&name, c)) else {
+                    continue;
+                };
+                let attempts = failed.get(pid).copied().unwrap_or(0);
                 if attempts >= MAX_KILL_ATTEMPTS {
                     continue;
                 }
-
-                // 首次检测时打印日志并显示覆盖窗口
-                if attempts == 0 {
-                    println!("检测到黑名单应用: {} (PID: {}, 进程名: {})", display_name, pid, process_name);
-                    if !overlay_suppressed.load(Ordering::SeqCst) {
-                        Self::show_overlay_window(app_handle, display_name);
-                    }
+                if attempts == 0 && !overlay_suppressed.load(Ordering::SeqCst) {
+                    show_overlay(&app, display);
                 }
-
                 if process.kill() {
-                    killed.push(format!("{} (PID: {})", process_name, pid));
-                    failed_pids.remove(pid);
+                    log::info!("已关闭黑名单应用 {} (PID {})", name, pid);
+                    failed.remove(pid);
                 } else {
-                    let new_attempts = attempts + 1;
-                    failed_pids.insert(*pid, new_attempts);
-                    if new_attempts >= MAX_KILL_ATTEMPTS {
-                        eprintln!(
-                            "关闭进程失败，已达最大重试次数: {} (PID: {})",
-                            process_name, pid
-                        );
-                    }
+                    failed.insert(*pid, attempts + 1);
                 }
             }
-        }
-
-        killed
-    }
-
-    /// 检查是否为系统保护进程
-    fn is_system_protected(process_name: &str) -> bool {
-        let name_lower = process_name.to_lowercase();
-
-        for prefix in SYSTEM_PROTECTED_PREFIXES {
-            if name_lower.starts_with(&prefix.to_lowercase()) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// 检查进程名是否匹配黑名单（支持多候选名，忽略子进程）
-    fn is_blocked_process(process_name: &str, candidate_names: &[String]) -> bool {
-        // 忽略常见的子进程后缀
-        let subprocess_suffixes = [
-            " helper", " renderer", " gpu", " utility", " plugin",
-            "_helper", "_renderer", "_gpu", "_utility", "_plugin",
-            "-helper", "-renderer", "-gpu", "-utility", "-plugin",
-        ];
-
-        for suffix in subprocess_suffixes {
-            if process_name.ends_with(suffix) {
-                return false;
-            }
-        }
-
-        // 精确匹配任一候选名
-        for name in candidate_names {
-            if process_name == name {
-                return true;
-            }
-        }
-
-        // contains 匹配（候选名长度 >= 3 时，进程名包含候选名）
-        for name in candidate_names {
-            if name.len() >= 3 && process_name.contains(name.as_str()) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// 手动检查并关闭一次（不启动线程，不发送事件）
-    pub fn check_and_kill_blocked(&self) -> Result<Vec<String>, AppError> {
-        let mut system = System::new();
-        system.refresh_processes(ProcessesToUpdate::All, true);
-
-        // 构建候选名映射
-        let match_entries: Vec<Vec<String>> = self.blocked_apps
-            .iter()
-            .map(|app| {
-                let mut names = vec![app.to_lowercase()];
-                if let Some(exec) = resolve_executable_name(app) {
-                    let exec_lower = exec.to_lowercase();
-                    if !names.contains(&exec_lower) {
-                        names.push(exec_lower);
-                    }
+            // 分段睡眠，停止时能更快响应
+            for _ in 0..6 {
+                if stop_signal.load(Ordering::SeqCst) {
+                    break;
                 }
-                names
-            })
-            .collect();
-
-        let mut killed = Vec::new();
-
-        for (pid, process) in system.processes() {
-            let process_name = process.name().to_string_lossy().to_lowercase();
-
-            if Self::is_system_protected(&process_name) {
-                continue;
-            }
-
-            for candidate_names in &match_entries {
-                if Self::is_blocked_process(&process_name, candidate_names) {
-                    if process.kill() {
-                        killed.push(format!("{} (PID: {})", process_name, pid));
-                    }
-                }
+                thread::sleep(POLL_INTERVAL / 6);
             }
         }
+    })
+}
 
-        Ok(killed)
+fn show_overlay(app: &AppHandle, blocked_app: &str) {
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.show();
+        let _ = overlay.unminimize();
+        let _ = overlay.set_always_on_top(true);
+        let _ = overlay.set_fullscreen(true);
+        let _ = overlay.set_focus();
+        let _ = app.emit("blocked-app-detected", blocked_app.to_string());
+        return;
     }
-
-    /// 检查指定应用是否正在运行
-    pub fn is_app_running(&self, app_name: &str) -> bool {
-        let mut system = System::new();
-        system.refresh_processes(ProcessesToUpdate::All, true);
-
-        let mut names = vec![app_name.to_lowercase()];
-        if let Some(exec) = resolve_executable_name(app_name) {
-            let exec_lower = exec.to_lowercase();
-            if !names.contains(&exec_lower) {
-                names.push(exec_lower);
-            }
-        }
-
-        for (_pid, process) in system.processes() {
-            let process_name = process.name().to_string_lossy().to_lowercase();
-            for name in &names {
-                if process_name.contains(name.as_str()) {
-                    return true;
-                }
-            }
-        }
-
-        false
-    }
-
-    /// 显示或创建覆盖窗口
-    fn show_overlay_window(app_handle: &AppHandle, blocked_app: &str) {
-        // 如果覆盖窗口已存在，恢复并发送事件
-        if let Some(overlay) = app_handle.get_webview_window("overlay") {
-            let _ = overlay.show();
-            let _ = overlay.unminimize();
-            let _ = overlay.set_always_on_top(true);
-            let _ = overlay.set_fullscreen(true);
-            let _ = overlay.set_focus();
-            let _ = app_handle.emit("blocked-app-detected", blocked_app.to_string());
-            return;
-        }
-
-        // 创建新的覆盖窗口
-        match WebviewWindowBuilder::new(
-            app_handle,
-            "overlay",
-            WebviewUrl::App("overlay.html".into()),
-        )
+    let built = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
         .title("专注模式")
         .fullscreen(true)
         .always_on_top(true)
         .decorations(false)
         .resizable(false)
         .closable(false)
-        .build()
-        {
-            Ok(_) => {
-                println!("覆盖窗口已创建");
-                // 窗口创建后发送被拦截 App 名称
-                let app_name = blocked_app.to_string();
-                let handle = app_handle.clone();
-                // 延迟发送事件，等待窗口加载
-                thread::spawn(move || {
-                    thread::sleep(Duration::from_millis(500));
-                    let _ = handle.emit("blocked-app-detected", app_name);
-                });
-            }
-            Err(e) => {
-                eprintln!("创建覆盖窗口失败: {}", e);
-            }
+        .skip_taskbar(true)
+        .build();
+    match built {
+        Ok(_) => {
+            let handle = app.clone();
+            let name = blocked_app.to_string();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(500));
+                let _ = handle.emit("blocked-app-detected", name);
+            });
         }
-    }
-}
-
-impl Default for AppBlocker {
-    fn default() -> Self {
-        Self::new(Vec::new())
+        Err(e) => log::error!("创建覆盖窗口失败: {}", e),
     }
 }
 
@@ -315,11 +122,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_system_protected() {
-        assert!(AppBlocker::is_system_protected("com.apple.Safari"));
-        assert!(AppBlocker::is_system_protected("Finder"));
-        assert!(AppBlocker::is_system_protected("pomodoro-focus"));
-        assert!(!AppBlocker::is_system_protected("bilibili"));
-        assert!(!AppBlocker::is_system_protected("QQ"));
+    fn matching_rules() {
+        let c = vec!["wechat".to_string(), "qq".to_string()];
+        assert!(matches("wechat", &c));
+        assert!(matches("wechatappex", &c));
+        assert!(!matches("wechat helper", &c));
+        // 短名字只做精确匹配，避免 "qq" 误伤 "qqmusic"
+        assert!(matches("qq", &c));
+        assert!(!matches("qqmusic", &c));
+    }
+
+    #[test]
+    fn protects_system_processes() {
+        assert!(is_protected("pomodoro-focus"));
+        assert!(!is_protected("bilibili"));
     }
 }

@@ -4,183 +4,98 @@ use std::thread::JoinHandle;
 
 use tauri::AppHandle;
 
-use crate::models::{Config, TimerState, TimerStatus};
-use crate::services::{AppBlocker, Scheduler, SiteBlocker};
+use crate::models::{Config, TimerStatus};
+use crate::services::app_blocker;
 
-pub struct TimerThread {
+/// 一个可停止的后台线程。
+#[derive(Default)]
+pub struct Worker {
     pub handle: Option<JoinHandle<()>>,
     pub stop_signal: Arc<AtomicBool>,
     pub pause_signal: Arc<AtomicBool>,
 }
 
-impl Default for TimerThread {
-    fn default() -> Self {
-        TimerThread {
-            handle: None,
-            stop_signal: Arc::new(AtomicBool::new(false)),
-            pause_signal: Arc::new(AtomicBool::new(false)),
+impl Worker {
+    /// 通知线程停止并等待退出（如果是在该线程内部调用则不等待）。
+    pub fn stop(&mut self) {
+        self.stop_signal.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.handle.take() {
+            if handle.thread().id() != std::thread::current().id() {
+                let _ = handle.join();
+            }
         }
+        self.stop_signal.store(false, Ordering::SeqCst);
+        self.pause_signal.store(false, Ordering::SeqCst);
     }
 }
 
-pub struct AppBlockerThread {
-    pub handle: Option<JoinHandle<()>>,
-    pub running_flag: Arc<AtomicBool>,
-}
-
-impl Default for AppBlockerThread {
-    fn default() -> Self {
-        AppBlockerThread {
-            handle: None,
-            running_flag: Arc::new(AtomicBool::new(false)),
-        }
-    }
-}
-
-pub struct SchedulerThread {
-    pub handle: Option<JoinHandle<()>>,
-    pub running_flag: Arc<AtomicBool>,
-}
-
-impl Default for SchedulerThread {
-    fn default() -> Self {
-        SchedulerThread {
-            handle: None,
-            running_flag: Arc::new(AtomicBool::new(false)),
-        }
-    }
+/// 线程句柄的锁即使被 panic 污染也继续使用，保证总能停掉线程、解除屏蔽。
+fn lock_worker(m: &Mutex<Worker>) -> std::sync::MutexGuard<'_, Worker> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 pub struct AppState {
     pub config: Arc<Mutex<Config>>,
     pub timer_status: Arc<Mutex<TimerStatus>>,
+    /// 供浏览器扩展 HTTP 接口读取（专注 + 休息期间为 true）
     pub timer_running: Arc<AtomicBool>,
-    pub blocker_running: AtomicBool,
-    pub scheduler_running: AtomicBool,
-    pub scheduled_focus_active: AtomicBool,
-    pub emergency_remaining: AtomicU32,
+    /// start_focus 进行中（可能在等管理员授权）
+    pub starting: AtomicBool,
     pub overlay_suppressed: Arc<AtomicBool>,
     pub suppress_generation: Arc<AtomicU32>,
-    pub timer_thread: Mutex<TimerThread>,
-    pub app_blocker_thread: Mutex<AppBlockerThread>,
-    pub scheduler_thread: Mutex<SchedulerThread>,
-    pub app_blocker: Mutex<AppBlocker>,
-    pub site_blocker: Mutex<SiteBlocker>,
-    pub scheduler: Mutex<Scheduler>,
+    pub timer_thread: Mutex<Worker>,
+    pub app_blocker_thread: Mutex<Worker>,
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Self {
-        let emergency_limit = config.pomodoro.emergency_cancel_limit;
-        let work_minutes = config.pomodoro.work_minutes;
-        let break_minutes = config.pomodoro.break_minutes;
-        let blocked_apps = config.blocked_apps.clone();
-        let blocked_sites = config.blocked_sites.clone();
-        let schedules = config.schedules.clone();
-
-        let timer_status = TimerStatus::new_with_config(work_minutes, break_minutes, emergency_limit);
-
+    pub fn new(mut config: Config) -> Self {
+        let remaining = config.pomodoro.monthly_emergency_remaining();
+        let status = TimerStatus::idle(
+            config.pomodoro.work_minutes,
+            config.pomodoro.break_minutes,
+            remaining,
+        );
         AppState {
             config: Arc::new(Mutex::new(config)),
-            timer_status: Arc::new(Mutex::new(timer_status)),
+            timer_status: Arc::new(Mutex::new(status)),
             timer_running: Arc::new(AtomicBool::new(false)),
-            blocker_running: AtomicBool::new(false),
-            scheduler_running: AtomicBool::new(false),
-            scheduled_focus_active: AtomicBool::new(false),
-            emergency_remaining: AtomicU32::new(emergency_limit),
+            starting: AtomicBool::new(false),
             overlay_suppressed: Arc::new(AtomicBool::new(false)),
             suppress_generation: Arc::new(AtomicU32::new(0)),
-            timer_thread: Mutex::new(TimerThread::default()),
-            app_blocker_thread: Mutex::new(AppBlockerThread::default()),
-            scheduler_thread: Mutex::new(SchedulerThread::default()),
-            app_blocker: Mutex::new(AppBlocker::new(blocked_apps)),
-            site_blocker: Mutex::new(SiteBlocker::new(blocked_sites)),
-            scheduler: Mutex::new(Scheduler::new(schedules)),
+            timer_thread: Mutex::new(Worker::default()),
+            app_blocker_thread: Mutex::new(Worker::default()),
         }
     }
 
     pub fn stop_timer_thread(&self) {
-        let mut timer_thread = self.timer_thread.lock().unwrap();
-        timer_thread.stop_signal.store(true, Ordering::SeqCst);
-        if let Some(handle) = timer_thread.handle.take() {
-            let _ = handle.join();
-        }
-        timer_thread.stop_signal.store(false, Ordering::SeqCst);
-        timer_thread.pause_signal.store(false, Ordering::SeqCst);
+        lock_worker(&self.timer_thread).stop();
     }
 
-    pub fn start_app_blocker(&self, app_handle: AppHandle) {
-        let config = self.config.lock().unwrap();
-        let blocked_apps = config.blocked_apps.clone();
-        drop(config);
-
-        let mut blocker_thread = self.app_blocker_thread.lock().unwrap();
-
-        // 如果已经在运行，先停止
-        if blocker_thread.running_flag.load(Ordering::SeqCst) {
-            blocker_thread.running_flag.store(false, Ordering::SeqCst);
-            if let Some(handle) = blocker_thread.handle.take() {
-                let _ = handle.join();
-            }
-        }
-
-        // 启动新的轮询线程
-        blocker_thread.running_flag.store(true, Ordering::SeqCst);
-        let running_flag = Arc::clone(&blocker_thread.running_flag);
-        let suppressed = Arc::clone(&self.overlay_suppressed);
-        let handle = AppBlocker::start_polling(blocked_apps, running_flag, app_handle, suppressed);
-        blocker_thread.handle = Some(handle);
-
-        self.blocker_running.store(true, Ordering::SeqCst);
+    pub fn start_app_blocker(&self, app: AppHandle) {
+        let blocked_apps = self.config.lock().unwrap().blocked_apps.clone();
+        let mut worker = lock_worker(&self.app_blocker_thread);
+        worker.stop();
+        worker.handle = Some(app_blocker::start_polling(
+            blocked_apps,
+            worker.stop_signal.clone(),
+            app,
+            self.overlay_suppressed.clone(),
+        ));
     }
 
     pub fn stop_app_blocker(&self) {
-        let mut blocker_thread = self.app_blocker_thread.lock().unwrap();
-        blocker_thread.running_flag.store(false, Ordering::SeqCst);
-        if let Some(handle) = blocker_thread.handle.take() {
-            let _ = handle.join();
-        }
-        self.blocker_running.store(false, Ordering::SeqCst);
+        lock_worker(&self.app_blocker_thread).stop();
     }
 
-    pub fn stop_scheduler(&self) {
-        let mut scheduler_thread = self.scheduler_thread.lock().unwrap();
-        scheduler_thread.running_flag.store(false, Ordering::SeqCst);
-        if let Some(handle) = scheduler_thread.handle.take() {
-            let _ = handle.join();
-        }
-        self.scheduler_running.store(false, Ordering::SeqCst);
-    }
-
-    pub fn is_scheduled_mode(&self) -> bool {
-        let config = self.config.lock().unwrap();
-        config.mode == "scheduled"
-    }
-
-    pub fn set_mode(&self, mode: &str) {
-        let mut config = self.config.lock().unwrap();
-        config.mode = mode.to_string();
-        let _ = config.save();
-    }
-
+    /// 真正退出应用前调用。专注进行中时保留 hosts 屏蔽，下次启动继续。
     pub fn cleanup_on_exit(&self) {
-        let timer_state = {
-            let status = self.timer_status.lock().unwrap();
-            status.state
-        };
-
-        // 停止所有后台线程
+        let idle = self.timer_status.lock().unwrap().state == crate::models::TimerState::Idle;
         self.stop_timer_thread();
         self.stop_app_blocker();
-        self.stop_scheduler();
-
-        // Working/Paused/Breaking 时保留 hosts 屏蔽，重启后可直接恢复
-        if timer_state != TimerState::Idle {
-            println!("[cleanup_on_exit] 专注进行中（{:?}），保留 hosts 屏蔽记录", timer_state);
-        } else {
-            println!("[cleanup_on_exit] Idle 状态，清理 hosts 屏蔽记录");
-            let site_blocker = self.site_blocker.lock().unwrap();
-            let _ = site_blocker.unblock_sites();
+        if idle {
+            if let Err(e) = crate::services::site_blocker::unblock_sites() {
+                log::warn!("退出时解除屏蔽失败: {}", e);
+            }
         }
     }
 }
